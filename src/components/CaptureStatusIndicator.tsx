@@ -1,34 +1,19 @@
 /**
- * CaptureStatusIndicator - Big, obvious ON/OFF toggle with status
- * 
- * This is the key UX improvement: users can immediately see if capture is running
+ * CaptureStatusIndicator - Simple ON/OFF status display
+ * Simplified for new capture context
  */
-import { Power, Loader2, AlertCircle } from 'lucide-react';
+import { Power, Brain } from 'lucide-react';
 import { useCaptureContext } from '../lib/captureContext';
-import { formatRelativeTime } from '../lib/api';
 
 export default function CaptureStatusIndicator() {
-  const { status, isCapturing, lastCapture, toggleCapture, settings } = useCaptureContext();
-
-  const isActive = status === 'active';
-  const hasError = status === 'error';
-  
-  // Count enabled sources
-  const enabledSources = [
-    settings.clipboardEnabled,
-    settings.screenshotsEnabled,
-    settings.appTrackingEnabled,
-    settings.browserEnabled,
-  ].filter(Boolean).length;
+  const { isActive, isCapturing, captureCount, toggleCapture } = useCaptureContext();
 
   return (
     <div 
       className={`relative overflow-hidden rounded-2xl border transition-all duration-500 ${
         isActive
           ? 'bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-500/30'
-          : hasError
-            ? 'bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border-rose-500/30'
-            : 'bg-gradient-to-br from-[#27272a]/50 via-[#18181b] to-transparent border-[#3f3f46]'
+          : 'bg-gradient-to-br from-[#27272a]/50 via-[#18181b] to-transparent border-[#3f3f46]'
       }`}
     >
       {/* Animated background pulse when active */}
@@ -45,11 +30,7 @@ export default function CaptureStatusIndicator() {
           <div className="relative flex items-center justify-center">
             <div 
               className={`w-3 h-3 rounded-full transition-colors duration-300 ${
-                isActive 
-                  ? 'bg-emerald-400' 
-                  : hasError 
-                    ? 'bg-rose-400'
-                    : 'bg-[#52525b]'
+                isActive ? 'bg-emerald-400' : 'bg-[#52525b]'
               }`} 
             />
             {isActive && (
@@ -67,39 +48,21 @@ export default function CaptureStatusIndicator() {
             <div className="flex items-center gap-2">
               <h2 
                 className={`text-lg font-semibold tracking-tight transition-colors ${
-                  isActive 
-                    ? 'text-emerald-400' 
-                    : hasError 
-                      ? 'text-rose-400'
-                      : 'text-[#71717a]'
+                  isActive ? 'text-emerald-400' : 'text-[#71717a]'
                 }`}
               >
-                {isActive ? 'Capture Active' : hasError ? 'Capture Error' : 'Capture Paused'}
+                {isActive ? 'Smart Capture Active' : 'Capture Paused'}
               </h2>
-              {isCapturing && (
-                <span className="flex items-center gap-1 text-[11px] text-emerald-400/70">
-                  <Loader2 size={10} className="animate-spin" />
-                  capturing...
-                </span>
-              )}
             </div>
             <p className="text-[12px] text-[#52525b] mt-0.5">
               {isActive ? (
                 <>
-                  <span className="text-[#71717a]">{enabledSources} source{enabledSources !== 1 ? 's' : ''}</span>
+                  <span className="text-[#71717a]">{captureCount} captures</span>
                   {' · '}
-                  <span>every {settings.frequencySeconds}s</span>
-                  {lastCapture && (
-                    <>
-                      {' · '}
-                      <span>last: {formatRelativeTime(lastCapture.toISOString())}</span>
-                    </>
-                  )}
+                  <span>every 1.5s</span>
                 </>
-              ) : hasError ? (
-                'Check permissions and try again'
               ) : (
-                'Click to start capturing context'
+                'Click to start smart capture'
               )}
             </p>
           </div>
@@ -115,15 +78,11 @@ export default function CaptureStatusIndicator() {
           }`}
           title={isActive ? 'Pause capture' : 'Start capture'}
         >
-          {hasError ? (
-            <AlertCircle size={24} className="text-rose-400" />
-          ) : (
-            <Power size={24} className={isActive ? 'drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : ''} />
-          )}
+          <Power size={24} className={isActive ? 'drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : ''} />
         </button>
       </div>
 
-      {/* Bottom: Quick info bar */}
+      {/* Bottom: Info bar */}
       <div 
         className={`flex items-center justify-between px-5 py-2.5 border-t transition-colors ${
           isActive 
@@ -131,20 +90,10 @@ export default function CaptureStatusIndicator() {
             : 'border-[#27272a] bg-[#0f0f12]'
         }`}
       >
-        <div className="flex items-center gap-4 text-[11px] text-[#52525b]">
-          <span className={settings.clipboardEnabled ? 'text-violet-400' : ''}>
-            📋 Clipboard {settings.clipboardEnabled ? 'ON' : 'off'}
-          </span>
-          <span className={settings.appTrackingEnabled ? 'text-cyan-400' : ''}>
-            🖥️ Apps {settings.appTrackingEnabled ? 'ON' : 'off'}
-          </span>
-          <span className={settings.screenshotsEnabled ? 'text-rose-400' : ''}>
-            📸 Screens {settings.screenshotsEnabled ? 'ON' : 'off'}
-          </span>
+        <div className="flex items-center gap-2 text-[11px] text-[#52525b]">
+          <Brain size={12} className={isActive ? 'text-violet-400' : ''} />
+          <span>Smart summaries of your activity</span>
         </div>
-        <span className="text-[10px] text-[#3f3f46]">
-          Configure in Privacy →
-        </span>
       </div>
     </div>
   );

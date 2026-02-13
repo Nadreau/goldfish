@@ -1,5 +1,6 @@
 /**
  * ContextBridge API — Tauri command wrappers
+ * Simplified and robust
  */
 import { invoke } from '@tauri-apps/api/core';
 
@@ -11,7 +12,7 @@ export interface Memory {
   id: string;
   content: string;
   tags: string[];
-  source: 'screenshot' | 'clipboard' | 'app-tracking' | 'browser' | 'manual' | 'ocr' | string;
+  source: string;
   source_app: string | null;
   timestamp: string;
 }
@@ -36,35 +37,28 @@ export interface ClipboardContent {
 
 export interface CaptureResult {
   success: boolean;
-  path: string | null;
+  changed: boolean;
+  summary: string;
+  saved_id: string | null;
   error: string | null;
+}
+
+export interface CaptureStatus {
+  is_active: boolean;
+  capture_count: number;
+}
+
+export interface RecordingStatus {
+  is_recording: boolean;
+  recording_path: string | null;
+  recording_start: string | null;
+  duration_seconds: number | null;
 }
 
 export interface RecordingResult {
   success: boolean;
-  is_recording: boolean;
   path: string | null;
   error: string | null;
-}
-
-export interface OCRResult {
-  success: boolean;
-  text: string | null;
-  confidence: number | null;
-  error: string | null;
-}
-
-export interface ContinuousCaptureResult {
-  success: boolean;
-  changed: boolean;
-  ocr_text: string | null;
-  saved_memory_id: string | null;
-  error: string | null;
-}
-
-export interface ContinuousCaptureStatus {
-  is_active: boolean;
-  capture_count: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -109,10 +103,6 @@ export async function deleteAllMemories(): Promise<number> {
 // Capture API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export async function captureScreenshot(): Promise<CaptureResult> {
-  return invoke<CaptureResult>('capture_screenshot');
-}
-
 export async function getActiveWindow(): Promise<ActiveWindow> {
   return invoke<ActiveWindow>('get_active_window');
 }
@@ -121,44 +111,59 @@ export async function getClipboard(): Promise<ClipboardContent> {
   return invoke<ClipboardContent>('get_clipboard');
 }
 
+export async function captureScreenshot(): Promise<CaptureResult> {
+  return invoke<CaptureResult>('capture_screenshot');
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// OCR & Continuous Capture API
+// Smart Capture API — The Main Feature
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export async function performOCR(imagePath: string): Promise<OCRResult> {
-  return invoke<OCRResult>('perform_ocr_on_image', { imagePath });
+export async function smartCapture(): Promise<CaptureResult> {
+  return invoke<CaptureResult>('smart_capture');
 }
 
-export async function captureAndOCR(): Promise<ContinuousCaptureResult> {
-  return invoke<ContinuousCaptureResult>('capture_and_ocr');
+export async function startCapture(): Promise<CaptureStatus> {
+  return invoke<CaptureStatus>('start_capture');
 }
 
-export async function startContinuousCapture(): Promise<ContinuousCaptureStatus> {
-  return invoke<ContinuousCaptureStatus>('start_continuous_capture');
+export async function stopCapture(): Promise<CaptureStatus> {
+  return invoke<CaptureStatus>('stop_capture');
 }
 
-export async function stopContinuousCapture(): Promise<ContinuousCaptureStatus> {
-  return invoke<ContinuousCaptureStatus>('stop_continuous_capture');
-}
-
-export async function getContinuousCaptureStatus(): Promise<ContinuousCaptureStatus> {
-  return invoke<ContinuousCaptureStatus>('get_continuous_capture_status');
+export async function getCaptureStatus(): Promise<CaptureStatus> {
+  return invoke<CaptureStatus>('get_capture_status');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Screen Recording API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export async function startScreenRecording(): Promise<RecordingResult> {
-  return invoke<RecordingResult>('start_screen_recording');
+export async function startRecording(): Promise<RecordingResult> {
+  return invoke<RecordingResult>('start_recording');
 }
 
-export async function stopScreenRecording(): Promise<RecordingResult> {
-  return invoke<RecordingResult>('stop_screen_recording');
+export async function stopRecording(): Promise<RecordingResult> {
+  return invoke<RecordingResult>('stop_recording');
 }
 
-export async function getRecordingStatus(): Promise<RecordingResult> {
-  return invoke<RecordingResult>('get_recording_status');
+export async function getRecordingStatus(): Promise<RecordingStatus> {
+  return invoke<RecordingStatus>('get_recording_status');
+}
+
+export async function listRecordings(): Promise<string[]> {
+  return invoke<string[]>('list_recordings');
+}
+
+export function formatDuration(seconds: number): string {
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -196,7 +201,7 @@ export function getSourceIcon(source: string): string {
     case 'app-tracking': return '🖥️';
     case 'browser': return '🌐';
     case 'manual': return '✍️';
-    case 'ocr': return '👁️';
+    case 'smart-capture': return '🧠';
     default: return '💾';
   }
 }

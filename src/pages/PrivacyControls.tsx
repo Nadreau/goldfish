@@ -1,202 +1,110 @@
 /**
- * PrivacyControls - Premium design with Continuous Capture + OCR
+ * PrivacyControls — Settings page (no duplicate toggle)
+ * The main toggle is on Dashboard
  */
-import { useState, useEffect, useRef } from 'react';
-import { Camera, Clipboard, Monitor, Globe, Pause, Play, Shield, AlertTriangle, Info, Clock, Activity, RefreshCw, Video, Square, Circle, Eye, Scan, Zap } from 'lucide-react';
+import { Shield, Info, AlertTriangle, Trash2, Database, HardDrive, Video, Square, Circle, FolderOpen } from 'lucide-react';
 import { useCaptureContext } from '../lib/captureContext';
-import ActivityFeed from '../components/ActivityFeed';
-import { 
-  startScreenRecording, 
-  stopScreenRecording, 
-  getRecordingStatus,
-  startContinuousCapture,
-  stopContinuousCapture,
-  getContinuousCaptureStatus,
-  captureAndOCR,
-  type ContinuousCaptureStatus,
-  type ContinuousCaptureResult,
-} from '../lib/api';
-
-interface ToggleCardProps {
-  icon: React.ElementType;
-  iconColor: string;
-  title: string;
-  description: string;
-  enabled: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
-}
-
-function ToggleCard({ icon: Icon, iconColor, title, description, enabled, disabled, onToggle }: ToggleCardProps) {
-  return (
-    <div 
-      className={`group flex items-center justify-between p-4 rounded-xl bg-[#111113] border transition-all duration-200 ${
-        disabled 
-          ? 'opacity-50 border-white/[0.04]' 
-          : enabled 
-            ? 'border-violet-500/20 bg-gradient-to-r from-violet-500/[0.05] to-transparent' 
-            : 'border-white/[0.04] hover:border-white/[0.08]'
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-xl ${enabled ? 'bg-' + iconColor.split('-')[1] + '-500/10' : 'bg-white/[0.03]'} flex items-center justify-center ring-1 ring-white/[0.06] transition-colors`}>
-          <Icon size={18} className={enabled ? iconColor : 'text-zinc-500'} />
-        </div>
-        <div>
-          <p className="text-[13px] font-medium text-white">{title}</p>
-          <p className="text-[11px] text-zinc-500 mt-0.5">{description}</p>
-        </div>
-      </div>
-      
-      <button 
-        onClick={onToggle}
-        disabled={disabled}
-        className={`relative w-11 h-6 rounded-full transition-all duration-300 ${
-          enabled ? 'bg-violet-600' : 'bg-zinc-800'
-        } ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-      >
-        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300 shadow-sm ${
-          enabled ? 'left-6' : 'left-1'
-        }`} />
-      </button>
-    </div>
-  );
-}
-
-const frequencies = [
-  { label: '10s', value: 10, desc: 'Real-time' },
-  { label: '30s', value: 30, desc: 'Frequent' },
-  { label: '1m', value: 60, desc: 'Moderate' },
-  { label: '5m', value: 300, desc: 'Light' },
-];
+import { deleteAllMemories, getMemoryStats, formatBytes, startRecording, stopRecording, getRecordingStatus, listRecordings, formatDuration, RecordingStatus } from '../lib/api';
+import { useState, useEffect, useCallback } from 'react';
+import { open } from '@tauri-apps/plugin-shell';
 
 export default function PrivacyControls() {
-  const { 
-    status, 
-    settings, 
-    events,
-    isCapturing,
-    toggleCapture, 
-    updateSettings,
-    captureNow 
-  } = useCaptureContext();
-
-  // Screen recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingPath, setRecordingPath] = useState<string | null>(null);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
+  const { isActive, captureCount } = useCaptureContext();
+  const [stats, setStats] = useState<{ total: number; storage: number } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
+  // Recording state
+  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus | null>(null);
+  const [recordings, setRecordings] = useState<string[]>([]);
   const [recordingLoading, setRecordingLoading] = useState(false);
 
-  // Continuous capture + OCR state
-  const [isContinuousActive, setIsContinuousActive] = useState(false);
-  const [continuousStats, setContinuousStats] = useState<ContinuousCaptureStatus | null>(null);
-  const [lastOCRResult, setLastOCRResult] = useState<ContinuousCaptureResult | null>(null);
-  const [continuousLoading, setContinuousLoading] = useState(false);
-  const continuousIntervalRef = useRef<number | null>(null);
-
-  // Check recording status on mount
   useEffect(() => {
-    getRecordingStatus().then((result) => {
-      setIsRecording(result.is_recording);
-      setRecordingPath(result.path);
+    getMemoryStats().then(s => {
+      setStats({ total: s.total_memories, storage: s.storage_bytes });
     }).catch(console.error);
-
-    getContinuousCaptureStatus().then((status) => {
-      setIsContinuousActive(status.is_active);
-      setContinuousStats(status);
-    }).catch(console.error);
-  }, []);
-
-  // Continuous capture loop
-  useEffect(() => {
-    if (isContinuousActive) {
-      // Run capture every 2-3 seconds
-      const runCapture = async () => {
-        try {
-          const result = await captureAndOCR();
-          setLastOCRResult(result);
-          // Update stats
-          const status = await getContinuousCaptureStatus();
-          setContinuousStats(status);
-        } catch (err) {
-          console.error('Continuous capture error:', err);
-        }
-      };
-
-      // Initial capture
-      runCapture();
-
-      // Set interval
-      continuousIntervalRef.current = window.setInterval(runCapture, 2500);
-
-      return () => {
-        if (continuousIntervalRef.current) {
-          clearInterval(continuousIntervalRef.current);
-          continuousIntervalRef.current = null;
-        }
-      };
-    }
-  }, [isContinuousActive]);
-
-  const handleToggleRecording = async () => {
-    setRecordingLoading(true);
-    setRecordingError(null);
     
+    // Get initial recording status
+    getRecordingStatus().then(setRecordingStatus).catch(console.error);
+    listRecordings().then(setRecordings).catch(console.error);
+  }, []);
+  
+  // Poll recording status while recording
+  useEffect(() => {
+    if (!recordingStatus?.is_recording) return;
+    
+    const interval = setInterval(() => {
+      getRecordingStatus().then(setRecordingStatus).catch(console.error);
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [recordingStatus?.is_recording]);
+  
+  const handleStartRecording = useCallback(async () => {
+    setRecordingLoading(true);
     try {
-      if (isRecording) {
-        const result = await stopScreenRecording();
-        setIsRecording(false);
-        setRecordingPath(result.path);
-        if (!result.success && result.error) {
-          setRecordingError(result.error);
-        }
+      const result = await startRecording();
+      if (result.success) {
+        const status = await getRecordingStatus();
+        setRecordingStatus(status);
       } else {
-        const result = await startScreenRecording();
-        setIsRecording(result.is_recording);
-        setRecordingPath(result.path);
-        if (!result.success && result.error) {
-          setRecordingError(result.error);
-        }
+        console.error('Failed to start recording:', result.error);
       }
     } catch (err) {
-      setRecordingError(String(err));
+      console.error('Recording error:', err);
     } finally {
       setRecordingLoading(false);
     }
-  };
-
-  const handleToggleContinuousCapture = async () => {
-    setContinuousLoading(true);
-    
+  }, []);
+  
+  const handleStopRecording = useCallback(async () => {
+    setRecordingLoading(true);
     try {
-      if (isContinuousActive) {
-        const status = await stopContinuousCapture();
-        setIsContinuousActive(false);
-        setContinuousStats(status);
+      const result = await stopRecording();
+      if (result.success) {
+        setRecordingStatus({ is_recording: false, recording_path: null, recording_start: null, duration_seconds: null });
+        // Refresh recordings list
+        const newRecordings = await listRecordings();
+        setRecordings(newRecordings);
       } else {
-        const status = await startContinuousCapture();
-        setIsContinuousActive(true);
-        setContinuousStats(status);
+        console.error('Failed to stop recording:', result.error);
       }
     } catch (err) {
-      console.error('Failed to toggle continuous capture:', err);
+      console.error('Stop recording error:', err);
     } finally {
-      setContinuousLoading(false);
+      setRecordingLoading(false);
+    }
+  }, []);
+  
+  const openRecordingsFolder = useCallback(async () => {
+    try {
+      const homeDir = await import('@tauri-apps/api/path').then(m => m.homeDir());
+      await open(`${homeDir}.contextbridge/recordings`);
+    } catch (err) {
+      console.error('Failed to open recordings folder:', err);
+    }
+  }, []);
+
+  const handleDeleteAll = async () => {
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+    
+    setDeleting(true);
+    try {
+      await deleteAllMemories();
+      setStats({ total: 0, storage: 0 });
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error('Delete failed:', err);
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const paused = status !== 'active';
-  const enabledCount = [
-    settings.clipboardEnabled, 
-    settings.screenshotsEnabled, 
-    settings.appTrackingEnabled, 
-    settings.browserEnabled
-  ].filter(Boolean).length;
-
-  const frequencyIndex = frequencies.findIndex(f => f.value === settings.frequencySeconds);
-
   return (
-    <div className="h-full flex flex-col bg-[#09090b] relative">
+    <div className="h-full flex flex-col bg-[#09090b] relative overflow-y-auto">
       {/* Ambient glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2/3 h-32 bg-gradient-to-b from-emerald-500/[0.05] to-transparent pointer-events-none" />
       
@@ -208,372 +116,272 @@ export default function PrivacyControls() {
               <Shield size={18} className="text-emerald-400" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-white tracking-tight">Privacy Controls</h1>
-              <p className="text-[12px] text-zinc-500">Control what ContextBridge captures</p>
+              <h1 className="text-lg font-semibold text-white tracking-tight">Privacy & Data</h1>
+              <p className="text-[12px] text-zinc-500">Manage your memory data</p>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={captureNow}
-              disabled={isCapturing}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[12px] font-medium bg-[#111113] border border-white/[0.04] text-zinc-400 hover:text-white hover:border-white/[0.08] transition-all disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={isCapturing ? 'animate-spin' : ''} />
-              {isCapturing ? 'Capturing...' : 'Capture Now'}
-            </button>
-
-            <button
-              onClick={toggleCapture}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium transition-all ${
-                paused
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/15'
-                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/15'
-              }`}
-            >
-              {paused ? <Play size={14} /> : <Pause size={14} />}
-              {paused ? 'Start' : 'Pause'}
-            </button>
           </div>
         </div>
 
         {/* Status indicator */}
         <div className={`flex items-center justify-between p-4 rounded-xl transition-all ${
-          paused 
-            ? 'bg-[#111113] border border-white/[0.04]' 
-            : 'bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20'
+          isActive 
+            ? 'bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20' 
+            : 'bg-[#111113] border border-white/[0.04]'
         }`}>
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className={`w-3 h-3 rounded-full transition-all ${
-                paused ? 'bg-zinc-600' : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'
+                isActive ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-zinc-600'
               }`} />
-              {!paused && <div className="absolute inset-0 w-3 h-3 rounded-full bg-emerald-400 animate-ping opacity-60" />}
+              {isActive && <div className="absolute inset-0 w-3 h-3 rounded-full bg-emerald-400 animate-ping opacity-60" />}
             </div>
             <div>
-              <span className={`text-[13px] font-medium ${paused ? 'text-zinc-500' : 'text-emerald-400'}`}>
-                {paused ? 'Capture Paused' : 'Capture Active'}
+              <span className={`text-[13px] font-medium ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                {isActive ? 'Capture Active' : 'Capture Paused'}
               </span>
               <p className="text-[11px] text-zinc-500">
-                {paused 
-                  ? 'No data is being collected' 
-                  : `${enabledCount} sources · every ${settings.frequencySeconds}s`
+                {isActive 
+                  ? `${captureCount} captures this session`
+                  : 'Go to Dashboard to start capture'
                 }
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03]">
-            <Activity size={12} className={paused ? 'text-zinc-600' : 'text-emerald-400'} />
-            <span className="text-[11px] text-zinc-500">
-              {events.length} events
-            </span>
           </div>
         </div>
       </header>
 
       {/* Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left column - Settings */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          
-          {/* ═══════════════════════════════════════════════════════════════════════
-              CONTINUOUS CAPTURE + OCR - The Star Feature
-              ═══════════════════════════════════════════════════════════════════════ */}
-          <section className="animate-fade-in-up">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Continuous Screen OCR
-            </h2>
-            <div className={`p-5 rounded-2xl border transition-all relative overflow-hidden ${
-              isContinuousActive 
-                ? 'bg-gradient-to-r from-cyan-500/10 via-violet-500/5 to-transparent border-cyan-500/20' 
-                : 'bg-[#111113] border-white/[0.04]'
-            }`}>
-              {/* Active glow */}
-              {isContinuousActive && (
-                <div className="absolute top-0 right-0 w-40 h-40 bg-cyan-500/20 blur-3xl pointer-events-none animate-pulse-soft" />
-              )}
-              
-              <div className="flex items-start justify-between mb-4 relative">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ring-1 transition-all ${
-                    isContinuousActive 
-                      ? 'bg-gradient-to-br from-cyan-500/20 to-violet-500/10 ring-cyan-500/30' 
-                      : 'bg-white/[0.03] ring-white/[0.06]'
-                  }`}>
-                    {isContinuousActive ? (
-                      <div className="relative">
-                        <Scan size={20} className="text-cyan-400 animate-pulse-soft" />
-                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-400 animate-ping" />
-                      </div>
-                    ) : (
-                      <Eye size={20} className="text-zinc-500" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-[14px] font-medium text-white flex items-center gap-2">
-                      Rewind-Style OCR
-                      {isContinuousActive && (
-                        <span className="px-2 py-0.5 text-[9px] font-semibold bg-cyan-500/20 text-cyan-400 rounded-full uppercase tracking-wider flex items-center gap-1">
-                          <Zap size={8} />
-                          LIVE
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      {isContinuousActive 
-                        ? `Captured ${continuousStats?.capture_count ?? 0} unique screens`
-                        : 'Capture text from your screen every 2-3 seconds'}
-                    </p>
-                  </div>
+      <div className="flex-1 px-6 py-6 space-y-6">
+        
+        {/* Storage Stats */}
+        <section className="animate-fade-in-up">
+          <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
+            Storage
+          </h2>
+          <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04]">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center ring-1 ring-violet-500/20">
+                  <Database size={18} className="text-violet-400" />
                 </div>
-                
-                <button
-                  onClick={handleToggleContinuousCapture}
-                  disabled={continuousLoading}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium transition-all shadow-lg ${
-                    isContinuousActive
-                      ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-500/20'
-                      : 'bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white shadow-cyan-500/20'
-                  } disabled:opacity-50`}
-                >
-                  {continuousLoading ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : isContinuousActive ? (
-                    <Square size={14} />
+                <div>
+                  <p className="text-xl font-bold text-white">{stats?.total ?? 0}</p>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Memories</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center ring-1 ring-cyan-500/20">
+                  <HardDrive size={18} className="text-cyan-400" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-white">{formatBytes(stats?.storage ?? 0)}</p>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Storage</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Screen Recording */}
+        <section className="animate-fade-in-up stagger-1">
+          <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
+            Screen Recording
+          </h2>
+          <div className={`p-5 rounded-2xl border transition-all ${
+            recordingStatus?.is_recording 
+              ? 'bg-gradient-to-br from-rose-500/10 to-transparent border-rose-500/30' 
+              : 'bg-[#111113] border-white/[0.04]'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ring-1 transition-all ${
+                  recordingStatus?.is_recording 
+                    ? 'bg-rose-500/20 ring-rose-500/40' 
+                    : 'bg-violet-500/10 ring-violet-500/20'
+                }`}>
+                  {recordingStatus?.is_recording ? (
+                    <div className="relative">
+                      <Circle size={18} className="text-rose-400 fill-rose-400 animate-recording-pulse" />
+                    </div>
                   ) : (
-                    <Eye size={14} />
+                    <Video size={18} className="text-violet-400" />
                   )}
-                  {continuousLoading ? 'Please wait...' : isContinuousActive ? 'Stop' : 'Start OCR'}
-                </button>
+                </div>
+                <div>
+                  <p className={`text-[14px] font-medium ${
+                    recordingStatus?.is_recording ? 'text-rose-400' : 'text-white'
+                  }`}>
+                    {recordingStatus?.is_recording ? 'Recording...' : 'Screen Recording'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    {recordingStatus?.is_recording && recordingStatus.duration_seconds !== null
+                      ? formatDuration(recordingStatus.duration_seconds)
+                      : 'Record your screen for AI to analyze later'}
+                  </p>
+                </div>
               </div>
               
-              {/* Last OCR result preview */}
-              {isContinuousActive && lastOCRResult && (
-                <div className="p-3 rounded-xl bg-[#0a0a0c] border border-white/[0.04] mt-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-2 h-2 rounded-full ${lastOCRResult.changed ? 'bg-cyan-400' : 'bg-zinc-600'}`} />
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                      {lastOCRResult.changed ? 'Screen changed' : 'No change detected'}
-                    </p>
-                    {lastOCRResult.saved_memory_id && (
-                      <span className="ml-auto text-[9px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                        ✓ Saved
-                      </span>
-                    )}
-                  </div>
-                  {lastOCRResult.ocr_text && (
-                    <p className="text-[11px] text-zinc-400 line-clamp-2 font-mono">
-                      {lastOCRResult.ocr_text.slice(0, 200)}...
-                    </p>
-                  )}
+              <button
+                onClick={recordingStatus?.is_recording ? handleStopRecording : handleStartRecording}
+                disabled={recordingLoading}
+                className={`px-4 py-2.5 rounded-xl text-[12px] font-medium transition-all flex items-center gap-2 ${
+                  recordingStatus?.is_recording
+                    ? 'bg-rose-500 text-white hover:bg-rose-400'
+                    : 'bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {recordingLoading ? (
+                  <span className="animate-spin">⏳</span>
+                ) : recordingStatus?.is_recording ? (
+                  <>
+                    <Square size={14} className="fill-current" />
+                    Stop
+                  </>
+                ) : (
+                  <>
+                    <Circle size={14} className="fill-current" />
+                    Start Recording
+                  </>
+                )}
+              </button>
+            </div>
+            
+            {/* Recent recordings */}
+            {recordings.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/[0.04]">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] text-zinc-500 uppercase tracking-wider">Recent Recordings</p>
+                  <button
+                    onClick={openRecordingsFolder}
+                    className="text-[11px] text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                  >
+                    <FolderOpen size={12} />
+                    Open Folder
+                  </button>
                 </div>
-              )}
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {recordings.slice(0, 5).map((path, i) => {
+                    const filename = path.split('/').pop() || path;
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-[11px] text-zinc-400">
+                        <Video size={12} className="text-zinc-500" />
+                        <span className="truncate">{filename}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Delete All Data */}
+        <section className="animate-fade-in-up stagger-2">
+          <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
+            Danger Zone
+          </h2>
+          <div className="p-5 rounded-2xl bg-[#111113] border border-rose-500/20">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center ring-1 ring-rose-500/20">
+                  <Trash2 size={18} className="text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-[14px] font-medium text-white">Delete All Memories</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Permanently remove all stored memories. This cannot be undone.
+                  </p>
+                </div>
+              </div>
               
-              <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-cyan-500/5 to-violet-500/5 border border-cyan-500/10">
-                <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  <span className="text-cyan-400 font-medium">How it works:</span> Takes a screenshot every 2-3 seconds, 
-                  uses macOS Vision for OCR, then stores the text as searchable memories. 
-                  Only saves when content changes significantly.
+              <button
+                onClick={handleDeleteAll}
+                disabled={deleting || (stats?.total ?? 0) === 0}
+                className={`px-4 py-2.5 rounded-xl text-[12px] font-medium transition-all ${
+                  showDeleteConfirm
+                    ? 'bg-rose-500 text-white hover:bg-rose-400'
+                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {deleting ? 'Deleting...' : showDeleteConfirm ? 'Confirm Delete' : 'Delete All'}
+              </button>
+            </div>
+            
+            {showDeleteConfirm && (
+              <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                <p className="text-[11px] text-rose-400">
+                  ⚠️ This will delete {stats?.total ?? 0} memories permanently. Click again to confirm.
+                </p>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="mt-2 text-[11px] text-zinc-500 hover:text-zinc-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Privacy info */}
+        <section className="animate-fade-in-up stagger-3">
+          <div className="p-4 rounded-2xl bg-[#111113] border border-white/[0.04]">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 ring-1 ring-blue-500/20">
+                <Info size={14} className="text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-[12px] font-medium text-white mb-1">Your data stays local</h3>
+                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                  All memories and recordings are stored locally on your device at <code className="text-violet-400">~/.contextbridge/</code>. 
+                  Nothing is sent to the cloud. You own your data.
                 </p>
               </div>
             </div>
-          </section>
-
-          {/* Continuous Screen Recording */}
-          <section className="animate-fade-in-up stagger-1">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Video Recording
-            </h2>
-            <div className={`p-5 rounded-2xl border transition-all relative overflow-hidden ${
-              isRecording 
-                ? 'bg-gradient-to-r from-rose-500/10 to-transparent border-rose-500/20' 
-                : 'bg-[#111113] border-white/[0.04]'
-            }`}>
-              {isRecording && (
-                <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/20 blur-3xl pointer-events-none" />
-              )}
-              
-              <div className="flex items-start justify-between mb-4 relative">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ring-1 transition-all ${
-                    isRecording 
-                      ? 'bg-rose-500/20 ring-rose-500/30' 
-                      : 'bg-white/[0.03] ring-white/[0.06]'
-                  }`}>
-                    {isRecording ? (
-                      <Circle size={20} className="text-rose-400 fill-rose-400 animate-recording-pulse" />
-                    ) : (
-                      <Video size={20} className="text-zinc-500" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-[14px] font-medium text-white flex items-center gap-2">
-                      Screen Recording
-                      {isRecording && (
-                        <span className="px-2 py-0.5 text-[9px] font-semibold bg-rose-500/20 text-rose-400 rounded-full uppercase tracking-wider">
-                          REC
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      {isRecording 
-                        ? 'Recording your screen continuously'
-                        : 'Capture video for full context'}
-                    </p>
-                  </div>
-                </div>
-                
-                <button
-                  onClick={handleToggleRecording}
-                  disabled={recordingLoading}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium transition-all shadow-lg ${
-                    isRecording
-                      ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-500/20'
-                      : 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-500/20'
-                  } disabled:opacity-50`}
-                >
-                  {recordingLoading ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : isRecording ? (
-                    <Square size={14} />
-                  ) : (
-                    <Video size={14} />
-                  )}
-                  {recordingLoading ? 'Please wait...' : isRecording ? 'Stop' : 'Record'}
-                </button>
-              </div>
-              
-              {recordingPath && !isRecording && (
-                <div className="p-3 rounded-xl bg-[#0a0a0c] border border-white/[0.04]">
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Last recording</p>
-                  <p className="text-[11px] text-zinc-400 font-mono truncate mt-1">{recordingPath}</p>
-                </div>
-              )}
-              
-              {recordingError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 mt-3">
-                  <p className="text-[11px] text-rose-400">{recordingError}</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Capture sources */}
-          <section className="animate-fade-in-up stagger-2">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Background Capture Sources
-            </h2>
-            <div className="space-y-2">
-              <ToggleCard
-                icon={Clipboard}
-                iconColor="text-violet-400"
-                title="Clipboard Monitoring"
-                description="Save clipboard changes automatically"
-                enabled={settings.clipboardEnabled}
-                disabled={paused}
-                onToggle={() => updateSettings({ clipboardEnabled: !settings.clipboardEnabled })}
-              />
-              <ToggleCard
-                icon={Camera}
-                iconColor="text-rose-400"
-                title="Screenshot Capture"
-                description="Periodically capture screen content"
-                enabled={settings.screenshotsEnabled}
-                disabled={paused}
-                onToggle={() => updateSettings({ screenshotsEnabled: !settings.screenshotsEnabled })}
-              />
-              <ToggleCard
-                icon={Monitor}
-                iconColor="text-cyan-400"
-                title="Active App Tracking"
-                description="Log which apps you're using"
-                enabled={settings.appTrackingEnabled}
-                disabled={paused}
-                onToggle={() => updateSettings({ appTrackingEnabled: !settings.appTrackingEnabled })}
-              />
-              <ToggleCard
-                icon={Globe}
-                iconColor="text-amber-400"
-                title="Browser History"
-                description="Track visited pages (coming soon)"
-                enabled={settings.browserEnabled}
-                disabled={true}
-                onToggle={() => updateSettings({ browserEnabled: !settings.browserEnabled })}
-              />
-            </div>
-          </section>
-
-          {/* Capture frequency */}
-          <section className="animate-fade-in-up stagger-3">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Capture Frequency
-            </h2>
-            <div className="p-4 rounded-2xl bg-[#111113] border border-white/[0.04]">
-              <div className="flex items-center gap-2 mb-4">
-                <Clock size={14} className="text-zinc-500" />
-                <span className="text-[12px] text-zinc-400">Background capture interval</span>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {frequencies.map((f, i) => (
-                  <button
-                    key={f.value}
-                    onClick={() => updateSettings({ frequencySeconds: f.value })}
-                    disabled={paused}
-                    className={`py-3 px-2 rounded-xl text-center transition-all ${
-                      frequencyIndex === i
-                        ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20'
-                        : 'bg-white/[0.03] text-zinc-500 hover:text-white hover:bg-white/[0.05]'
-                    } ${paused ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <p className="text-[13px] font-semibold">{f.label}</p>
-                    <p className="text-[9px] mt-0.5 opacity-70 uppercase tracking-wider">{f.desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Privacy info */}
-          <section className="animate-fade-in-up stagger-4">
-            <div className="p-4 rounded-2xl bg-[#111113] border border-white/[0.04]">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 ring-1 ring-blue-500/20">
-                  <Info size={14} className="text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-[12px] font-medium text-white mb-1">Your data stays local</h3>
-                  <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    All memories are stored locally on your device. Screenshots are deleted immediately after OCR processing.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Warning */}
-          <section className="animate-fade-in-up stagger-5">
-            <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0 ring-1 ring-amber-500/20">
-                  <AlertTriangle size={14} className="text-amber-400" />
-                </div>
-                <div>
-                  <h3 className="text-[12px] font-medium text-amber-400 mb-1">Sensitive content</h3>
-                  <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Be mindful of passwords. Consider pausing capture when using banking apps or entering credentials.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* Right column - Activity Feed */}
-        <div className="w-[280px] border-l border-white/[0.04] overflow-y-auto bg-[#0a0a0c]/80 backdrop-blur-xl flex-shrink-0">
-          <div className="p-4">
-            <ActivityFeed maxItems={20} />
           </div>
-        </div>
+        </section>
+
+        {/* Warning */}
+        <section className="animate-fade-in-up stagger-4">
+          <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0 ring-1 ring-amber-500/20">
+                <AlertTriangle size={14} className="text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-[12px] font-medium text-amber-400 mb-1">Sensitive content</h3>
+                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                  Be mindful of passwords and sensitive information. Consider pausing capture when using banking apps or entering credentials.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section className="animate-fade-in-up stagger-5">
+          <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
+            How Smart Capture Works
+          </h2>
+          <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04] space-y-4">
+            {[
+              { num: '1', title: 'Context Detection', desc: 'Reads your active window and app every 1.5 seconds' },
+              { num: '2', title: 'Smart Summarization', desc: 'Creates meaningful descriptions like "Reading email" or "Coding in VS Code"' },
+              { num: '3', title: 'Deduplication', desc: 'Only saves when your activity actually changes, keeping the DB clean' },
+              { num: '4', title: 'MCP Integration', desc: 'AI assistants can query "What was I working on?" and get intelligent answers' },
+            ].map((step, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-violet-400">
+                  {step.num}
+                </div>
+                <div>
+                  <p className="text-[12px] font-medium text-zinc-200">{step.title}</p>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">{step.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );

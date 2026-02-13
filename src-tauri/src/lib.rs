@@ -4,53 +4,55 @@ use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::Command;
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Emitter, Manager, State,
+    Manager, State,
 };
 use uuid::Uuid;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Capture State
+// ═══════════════════════════════════════════════════════════════════════════════
+
+pub struct CaptureState {
+    pub is_active: Mutex<bool>,
+    pub last_content_hash: Mutex<u64>,
+    pub last_window_info: Mutex<String>,
+    pub capture_count: Mutex<u32>,
+}
+
+impl Default for CaptureState {
+    fn default() -> Self {
+        Self {
+            is_active: Mutex::new(false),
+            last_content_hash: Mutex::new(0),
+            last_window_info: Mutex::new(String::new()),
+            capture_count: Mutex::new(0),
+        }
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Screen Recording State
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub struct RecordingState {
-    pub process: Mutex<Option<Child>>,
-    pub current_path: Mutex<Option<String>>,
     pub is_recording: Mutex<bool>,
+    pub recording_pid: Mutex<Option<u32>>,
+    pub recording_path: Mutex<Option<String>>,
+    pub recording_start: Mutex<Option<String>>,
 }
 
 impl Default for RecordingState {
     fn default() -> Self {
         Self {
-            process: Mutex::new(None),
-            current_path: Mutex::new(None),
             is_recording: Mutex::new(false),
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Continuous Capture State
-// ═══════════════════════════════════════════════════════════════════════════════
-
-pub struct ContinuousCaptureState {
-    pub is_active: Mutex<bool>,
-    pub last_frame_hash: Mutex<u64>,
-    pub last_ocr_text: Mutex<String>,
-    pub capture_count: Mutex<u32>,
-}
-
-impl Default for ContinuousCaptureState {
-    fn default() -> Self {
-        Self {
-            is_active: Mutex::new(false),
-            last_frame_hash: Mutex::new(0),
-            last_ocr_text: Mutex::new(String::new()),
-            capture_count: Mutex::new(0),
+            recording_pid: Mutex::new(None),
+            recording_path: Mutex::new(None),
+            recording_start: Mutex::new(None),
         }
     }
 }
@@ -64,7 +66,7 @@ pub struct Memory {
     pub id: String,
     pub content: String,
     pub tags: Vec<String>,
-    pub source: String, // 'manual', 'clipboard', 'screenshot', 'app-tracking', 'ocr'
+    pub source: String,
     pub source_app: Option<String>,
     pub timestamp: String,
 }
@@ -75,13 +77,6 @@ pub struct MemoryStats {
     pub memories_today: usize,
     pub storage_bytes: u64,
     pub sources: std::collections::HashMap<String, usize>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CaptureResult {
-    pub success: bool,
-    pub path: Option<String>,
-    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -97,50 +92,34 @@ pub struct ClipboardContent {
     pub timestamp: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CaptureSettings {
-    pub screenshots_enabled: bool,
-    pub clipboard_enabled: bool,
-    pub app_tracking_enabled: bool,
-    pub browser_enabled: bool,
-    pub capture_paused: bool,
-    pub frequency_seconds: u32,
-}
-
-impl Default for CaptureSettings {
-    fn default() -> Self {
-        Self {
-            screenshots_enabled: false,
-            clipboard_enabled: true,
-            app_tracking_enabled: true,
-            browser_enabled: false,
-            capture_paused: false,
-            frequency_seconds: 300,
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OCRResult {
-    pub success: bool,
-    pub text: Option<String>,
-    pub confidence: Option<f64>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ContinuousCaptureResult {
+pub struct CaptureResult {
     pub success: bool,
     pub changed: bool,
-    pub ocr_text: Option<String>,
-    pub saved_memory_id: Option<String>,
+    pub summary: String,
+    pub saved_id: Option<String>,
     pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ContinuousCaptureStatus {
+pub struct CaptureStatus {
     pub is_active: bool,
     pub capture_count: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RecordingStatus {
+    pub is_recording: bool,
+    pub recording_path: Option<String>,
+    pub recording_start: Option<String>,
+    pub duration_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RecordingResult {
+    pub success: bool,
+    pub path: Option<String>,
+    pub error: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -152,12 +131,6 @@ fn get_db_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join(".contextbridge")
         .join("memories.db")
-}
-
-fn get_data_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".contextbridge")
 }
 
 pub struct DbConnection(pub Mutex<Connection>);
@@ -186,26 +159,14 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
         [],
     )?;
     
-    conn.execute(
-        "ALTER TABLE memories ADD COLUMN source TEXT DEFAULT 'manual'",
-        [],
-    ).ok();
-    
-    // Add content_hash for deduplication
-    conn.execute(
-        "ALTER TABLE memories ADD COLUMN content_hash TEXT",
-        [],
-    ).ok();
+    // Add columns if they don't exist
+    conn.execute("ALTER TABLE memories ADD COLUMN source TEXT DEFAULT 'manual'", []).ok();
+    conn.execute("ALTER TABLE memories ADD COLUMN content_hash TEXT", []).ok();
     
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories(created_at)",
         [],
     )?;
-    
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash)",
-        [],
-    ).ok();
     
     Ok(conn)
 }
@@ -214,23 +175,16 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
 // Helper Functions
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Calculate hash of content for deduplication
-fn calculate_content_hash(content: &str) -> String {
+fn calculate_content_hash(content: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
-    // Normalize whitespace and lowercase for comparison
-    let normalized: String = content
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
+    let normalized: String = content.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
     normalized.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    hasher.finish()
 }
 
-/// Check if content is duplicate within last N hours
-fn is_duplicate_content(conn: &Connection, content_hash: &str, hours: i64) -> bool {
+fn is_duplicate_recent(conn: &Connection, content_hash: &str, minutes: i64) -> bool {
     let cutoff = chrono::Local::now()
-        .checked_sub_signed(chrono::Duration::hours(hours))
+        .checked_sub_signed(chrono::Duration::minutes(minutes))
         .map(|t| t.to_rfc3339())
         .unwrap_or_default();
     
@@ -238,79 +192,15 @@ fn is_duplicate_content(conn: &Connection, content_hash: &str, hours: i64) -> bo
         "SELECT COUNT(*) FROM memories WHERE content_hash = ? AND created_at > ?",
         params![content_hash, cutoff],
         |row| row.get::<_, i32>(0),
-    )
-    .unwrap_or(0) > 0
+    ).unwrap_or(0) > 0
 }
 
-/// Calculate image hash for frame differencing
-fn calculate_image_hash(path: &str) -> Option<u64> {
-    // Use sips to get image dimensions as a quick hash proxy
-    // For proper frame differencing, we'd need image processing libs
-    let output = Command::new("sips")
-        .args(["-g", "pixelWidth", "-g", "pixelHeight", path])
-        .output()
-        .ok()?;
-    
-    let _output_str = String::from_utf8_lossy(&output.stdout);
-    let mut hasher = DefaultHasher::new();
-    
-    // Also include file modification time for change detection
-    if let Ok(metadata) = std::fs::metadata(path) {
-        if let Ok(modified) = metadata.modified() {
-            modified.hash(&mut hasher);
-        }
-    }
-    
-    // Quick sampling of file for hash
-    if let Ok(data) = std::fs::read(path) {
-        // Sample every 1000th byte for performance
-        for (i, byte) in data.iter().enumerate() {
-            if i % 1000 == 0 {
-                byte.hash(&mut hasher);
-            }
-        }
-    }
-    
-    Some(hasher.finish())
-}
-
-/// Clean similarity of two text strings (0.0 to 1.0)
-fn text_similarity(a: &str, b: &str) -> f64 {
-    if a.is_empty() || b.is_empty() {
-        return 0.0;
-    }
-    
-    let a_lower = a.to_lowercase();
-    let b_lower = b.to_lowercase();
-    
-    let a_words: std::collections::HashSet<&str> = a_lower
-        .split_whitespace()
-        .filter(|w| w.len() > 2)
-        .collect();
-    
-    let b_words: std::collections::HashSet<&str> = b_lower
-        .split_whitespace()
-        .filter(|w| w.len() > 2)
-        .collect();
-    
-    if a_words.is_empty() || b_words.is_empty() {
-        return 0.0;
-    }
-    
-    let intersection = a_words.intersection(&b_words).count();
-    let union = a_words.union(&b_words).count();
-    
-    intersection as f64 / union as f64
-}
-
-// Simple term vector compatible with MCP server's TF-IDF approach
 fn build_term_vector(text: &str) -> String {
     use std::collections::HashMap;
     
     let stop_words: std::collections::HashSet<&str> = [
         "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
         "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
-        "this", "but", "his", "by", "from", "they", "we", "say", "her", "is",
     ].iter().cloned().collect();
     
     let tokens: Vec<String> = text
@@ -333,144 +223,217 @@ fn build_term_vector(text: &str) -> String {
     serde_json::to_string(&freq).unwrap_or_else(|_| "{}".to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// OCR using macOS Vision Framework
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Perform OCR on an image using macOS Vision framework via Swift script
-fn perform_ocr(image_path: &str) -> OCRResult {
-    // Swift script to perform OCR using Vision framework
-    let swift_script = r#"
-import Foundation
-import Vision
-import AppKit
-
-guard CommandLine.arguments.count > 1 else {
-    print("ERROR: No image path provided")
-    exit(1)
-}
-
-let imagePath = CommandLine.arguments[1]
-guard let image = NSImage(contentsOfFile: imagePath) else {
-    print("ERROR: Could not load image")
-    exit(1)
-}
-
-guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-    print("ERROR: Could not create CGImage")
-    exit(1)
-}
-
-let request = VNRecognizeTextRequest()
-request.recognitionLevel = .accurate
-request.usesLanguageCorrection = true
-request.recognitionLanguages = ["en-US"]
-
-let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-
-do {
-    try handler.perform([request])
-    guard let observations = request.results else {
-        print("ERROR: No results")
-        exit(1)
+/// Generate a smart summary based on app + window title + clipboard
+fn generate_smart_summary(app_name: &str, window_title: &str, clipboard: Option<&str>) -> String {
+    let app_lower = app_name.to_lowercase();
+    let title_lower = window_title.to_lowercase();
+    
+    // Browser patterns
+    if app_lower.contains("chrome") || app_lower.contains("safari") || app_lower.contains("firefox") || app_lower.contains("arc") || app_lower.contains("edge") {
+        // Email patterns
+        if title_lower.contains("gmail") || title_lower.contains("mail") || title_lower.contains("inbox") {
+            if title_lower.contains(" - ") {
+                let parts: Vec<&str> = window_title.splitn(2, " - ").collect();
+                if let Some(subject) = parts.first() {
+                    return format!("Reading email: {}", subject.trim());
+                }
+            }
+            return "Checking email".to_string();
+        }
+        
+        // YouTube
+        if title_lower.contains("youtube") {
+            if title_lower.contains(" - youtube") {
+                let video_title = window_title.replace(" - YouTube", "").trim().to_string();
+                if !video_title.is_empty() && video_title.len() < 80 {
+                    return format!("Watching: {}", video_title);
+                }
+            }
+            return "Browsing YouTube".to_string();
+        }
+        
+        // GitHub
+        if title_lower.contains("github") {
+            if title_lower.contains("pull request") {
+                return "Reviewing pull request on GitHub".to_string();
+            }
+            if title_lower.contains("issues") {
+                return "Browsing GitHub issues".to_string();
+            }
+            return format!("On GitHub: {}", window_title.split(" · ").next().unwrap_or("repository"));
+        }
+        
+        // Slack/Discord in browser
+        if title_lower.contains("slack") {
+            return "Chatting in Slack".to_string();
+        }
+        if title_lower.contains("discord") {
+            return "Chatting in Discord".to_string();
+        }
+        
+        // Google Docs/Sheets
+        if title_lower.contains("google docs") || title_lower.contains("google sheets") || title_lower.contains("google slides") {
+            let doc_type = if title_lower.contains("sheets") { "spreadsheet" }
+                else if title_lower.contains("slides") { "presentation" }
+                else { "document" };
+            return format!("Editing {} in Google Docs", doc_type);
+        }
+        
+        // Notion
+        if title_lower.contains("notion") {
+            return "Working in Notion".to_string();
+        }
+        
+        // Twitter/X
+        if title_lower.contains("twitter") || title_lower.contains(" / x") || title_lower.contains("x.com") {
+            return "Browsing Twitter/X".to_string();
+        }
+        
+        // LinkedIn
+        if title_lower.contains("linkedin") {
+            return "On LinkedIn".to_string();
+        }
+        
+        // Reddit
+        if title_lower.contains("reddit") {
+            return "Browsing Reddit".to_string();
+        }
+        
+        // Stack Overflow
+        if title_lower.contains("stack overflow") {
+            return "Looking up on Stack Overflow".to_string();
+        }
+        
+        // Generic browser - use page title
+        if !window_title.is_empty() && window_title.len() < 100 {
+            return format!("Browsing: {}", window_title);
+        }
+        return format!("Browsing in {}", app_name);
     }
     
-    var allText: [String] = []
-    var totalConfidence: Float = 0
-    var count: Int = 0
+    // Code editors
+    if app_lower.contains("code") || app_lower.contains("vscode") || app_lower.contains("visual studio") {
+        if !window_title.is_empty() {
+            // Extract filename from VS Code title
+            let parts: Vec<&str> = window_title.split(" — ").collect();
+            if let Some(file_part) = parts.first() {
+                let filename = file_part.trim();
+                if filename.contains('.') {
+                    return format!("Editing {} in VS Code", filename);
+                }
+            }
+        }
+        return "Coding in VS Code".to_string();
+    }
     
-    for observation in observations {
-        if let topCandidate = observation.topCandidates(1).first {
-            allText.append(topCandidate.string)
-            totalConfidence += topCandidate.confidence
-            count += 1
+    if app_lower.contains("xcode") {
+        return "Developing in Xcode".to_string();
+    }
+    
+    if app_lower.contains("cursor") {
+        return "Coding with Cursor AI".to_string();
+    }
+    
+    // Terminal
+    if app_lower.contains("terminal") || app_lower.contains("iterm") || app_lower.contains("warp") || app_lower.contains("kitty") {
+        return "Working in terminal".to_string();
+    }
+    
+    // Communication apps
+    if app_lower.contains("slack") {
+        if !window_title.is_empty() {
+            return format!("Slack: {}", window_title);
+        }
+        return "Chatting in Slack".to_string();
+    }
+    
+    if app_lower.contains("discord") {
+        return "Chatting in Discord".to_string();
+    }
+    
+    if app_lower.contains("messages") || app_lower.contains("imessage") {
+        return "Messaging".to_string();
+    }
+    
+    if app_lower.contains("zoom") {
+        return "In a Zoom call".to_string();
+    }
+    
+    if app_lower.contains("teams") {
+        return "In Microsoft Teams".to_string();
+    }
+    
+    // Design apps
+    if app_lower.contains("figma") {
+        return "Designing in Figma".to_string();
+    }
+    
+    if app_lower.contains("sketch") {
+        return "Designing in Sketch".to_string();
+    }
+    
+    // Notes/Writing
+    if app_lower.contains("notes") {
+        return "Taking notes".to_string();
+    }
+    
+    if app_lower.contains("obsidian") {
+        return "Writing in Obsidian".to_string();
+    }
+    
+    if app_lower.contains("notion") {
+        return "Working in Notion".to_string();
+    }
+    
+    // Finder
+    if app_lower.contains("finder") {
+        if !window_title.is_empty() {
+            return format!("Browsing files: {}", window_title);
+        }
+        return "Managing files in Finder".to_string();
+    }
+    
+    // Preview
+    if app_lower.contains("preview") {
+        if !window_title.is_empty() {
+            return format!("Viewing: {}", window_title);
+        }
+        return "Viewing document in Preview".to_string();
+    }
+    
+    // Music/Spotify
+    if app_lower.contains("spotify") || app_lower.contains("music") {
+        if !window_title.is_empty() && !title_lower.contains("spotify") {
+            return format!("Listening to: {}", window_title);
+        }
+        return "Listening to music".to_string();
+    }
+    
+    // Calendar
+    if app_lower.contains("calendar") {
+        return "Checking calendar".to_string();
+    }
+    
+    // Use clipboard for context if meaningful
+    if let Some(clip) = clipboard {
+        if !clip.is_empty() && clip.len() > 10 && clip.len() < 200 {
+            // Check if clipboard has code
+            if clip.contains("function") || clip.contains("const ") || clip.contains("import ") {
+                return format!("Working with code in {}", app_name);
+            }
+            // Check if clipboard is a URL
+            if clip.starts_with("http") {
+                return format!("Copied link from {}", app_name);
+            }
         }
     }
     
-    let text = allText.joined(separator: "\n")
-    let avgConfidence = count > 0 ? totalConfidence / Float(count) : 0
+    // Default: use app name with window title
+    if !window_title.is_empty() && window_title.len() < 60 && window_title != app_name {
+        return format!("{}: {}", app_name, window_title);
+    }
     
-    print("TEXT_START")
-    print(text)
-    print("TEXT_END")
-    print("CONFIDENCE:\(avgConfidence)")
-} catch {
-    print("ERROR: \(error.localizedDescription)")
-    exit(1)
-}
-"#;
-
-    // Write the Swift script to a temp file
-    let script_path = std::env::temp_dir().join("contextbridge_ocr.swift");
-    if let Err(e) = std::fs::write(&script_path, swift_script) {
-        return OCRResult {
-            success: false,
-            text: None,
-            confidence: None,
-            error: Some(format!("Failed to write OCR script: {}", e)),
-        };
-    }
-
-    // Execute the Swift script
-    let output = Command::new("swift")
-        .arg(&script_path)
-        .arg(image_path)
-        .output();
-
-    match output {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            
-            if !output.status.success() {
-                return OCRResult {
-                    success: false,
-                    text: None,
-                    confidence: None,
-                    error: Some(format!("OCR failed: {}", stderr)),
-                };
-            }
-            
-            // Parse the output
-            let mut text = String::new();
-            let mut confidence: Option<f64> = None;
-            let mut in_text = false;
-            
-            for line in stdout.lines() {
-                if line == "TEXT_START" {
-                    in_text = true;
-                    continue;
-                }
-                if line == "TEXT_END" {
-                    in_text = false;
-                    continue;
-                }
-                if line.starts_with("CONFIDENCE:") {
-                    confidence = line.replace("CONFIDENCE:", "").parse().ok();
-                    continue;
-                }
-                if in_text {
-                    if !text.is_empty() {
-                        text.push('\n');
-                    }
-                    text.push_str(line);
-                }
-            }
-            
-            OCRResult {
-                success: true,
-                text: if text.is_empty() { None } else { Some(text) },
-                confidence,
-                error: None,
-            }
-        }
-        Err(e) => OCRResult {
-            success: false,
-            text: None,
-            confidence: None,
-            error: Some(format!("Failed to execute OCR: {}", e)),
-        },
-    }
+    format!("Using {}", app_name)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -558,9 +521,7 @@ fn get_memory_stats(db: State<DbConnection>) -> Result<MemoryStats, String> {
         .unwrap_or(0);
     
     let db_path = get_db_path();
-    let storage_bytes = std::fs::metadata(&db_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let storage_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
     
     let mut sources = std::collections::HashMap::new();
     if let Ok(mut stmt) = conn.prepare("SELECT source, COUNT(*) FROM memories GROUP BY source") {
@@ -593,17 +554,15 @@ fn save_memory(
 ) -> Result<Memory, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     
-    // Check for duplicates
-    let content_hash = calculate_content_hash(&content);
-    if is_duplicate_content(&conn, &content_hash, 1) {
-        return Err("Duplicate content within last hour".to_string());
+    let content_hash = format!("{:x}", calculate_content_hash(&content));
+    if is_duplicate_recent(&conn, &content_hash, 5) {
+        return Err("Duplicate content within last 5 minutes".to_string());
     }
     
     let id = Uuid::new_v4().to_string();
     let now = Local::now().to_rfc3339();
     let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
     let source_app_str = source_app.clone().unwrap_or_else(|| "unknown".to_string());
-    
     let embedding = build_term_vector(&content);
     
     conn.execute(
@@ -624,68 +583,21 @@ fn save_memory(
 #[tauri::command]
 fn delete_memory(db: State<DbConnection>, id: String) -> Result<bool, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    
-    let rows = conn
-        .execute("DELETE FROM memories WHERE id = ?", params![id])
-        .map_err(|e| e.to_string())?;
-    
+    let rows = conn.execute("DELETE FROM memories WHERE id = ?", params![id]).map_err(|e| e.to_string())?;
     Ok(rows > 0)
 }
 
 #[tauri::command]
 fn delete_all_memories(db: State<DbConnection>) -> Result<usize, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    
-    let rows = conn
-        .execute("DELETE FROM memories", [])
-        .map_err(|e| e.to_string())?;
-    
+    let rows = conn.execute("DELETE FROM memories", []).map_err(|e| e.to_string())?;
     conn.execute("VACUUM", []).ok();
-    
     Ok(rows)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Capture Commands
 // ═══════════════════════════════════════════════════════════════════════════════
-
-#[tauri::command]
-fn capture_screenshot(app: tauri::AppHandle) -> CaptureResult {
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    let screenshots_dir = data_dir.join("screenshots");
-    std::fs::create_dir_all(&screenshots_dir).ok();
-    let path = screenshots_dir.join(format!("capture_{}.png", timestamp));
-
-    match Command::new("screencapture")
-        .args(["-x", "-C", path.to_str().unwrap_or("/tmp/cb_capture.png")])
-        .output()
-    {
-        Ok(output) => {
-            if output.status.success() {
-                CaptureResult {
-                    success: true,
-                    path: Some(path.to_string_lossy().to_string()),
-                    error: None,
-                }
-            } else {
-                CaptureResult {
-                    success: false,
-                    path: None,
-                    error: Some(String::from_utf8_lossy(&output.stderr).to_string()),
-                }
-            }
-        }
-        Err(e) => CaptureResult {
-            success: false,
-            path: None,
-            error: Some(e.to_string()),
-        },
-    }
-}
 
 #[tauri::command]
 fn get_active_window() -> ActiveWindow {
@@ -699,13 +611,13 @@ fn get_active_window() -> ActiveWindow {
                 end tell
             end try
         end tell
-        return frontApp & "|" & frontWindow
+        return frontApp & "|||" & frontWindow
     "#;
 
     match Command::new("osascript").arg("-e").arg(script).output() {
         Ok(output) => {
             let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let parts: Vec<&str> = result.splitn(2, '|').collect();
+            let parts: Vec<&str> = result.splitn(2, "|||").collect();
             ActiveWindow {
                 app_name: parts.first().unwrap_or(&"Unknown").to_string(),
                 window_title: parts.get(1).unwrap_or(&"").to_string(),
@@ -734,152 +646,139 @@ fn get_clipboard() -> ClipboardContent {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Continuous Capture + OCR Pipeline
-// ═══════════════════════════════════════════════════════════════════════════════
-
 #[tauri::command]
-fn perform_ocr_on_image(image_path: String) -> OCRResult {
-    perform_ocr(&image_path)
+fn capture_screenshot(app: tauri::AppHandle) -> CaptureResult {
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let data_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("/tmp"));
+    let screenshots_dir = data_dir.join("screenshots");
+    std::fs::create_dir_all(&screenshots_dir).ok();
+    let path = screenshots_dir.join(format!("capture_{}.png", timestamp));
+
+    match Command::new("screencapture")
+        .args(["-x", "-C", path.to_str().unwrap_or("/tmp/cb_capture.png")])
+        .output()
+    {
+        Ok(output) => {
+            if output.status.success() {
+                CaptureResult {
+                    success: true,
+                    changed: true,
+                    summary: format!("Screenshot saved: {}", path.to_string_lossy()),
+                    saved_id: None,
+                    error: None,
+                }
+            } else {
+                CaptureResult {
+                    success: false,
+                    changed: false,
+                    summary: String::new(),
+                    saved_id: None,
+                    error: Some(String::from_utf8_lossy(&output.stderr).to_string()),
+                }
+            }
+        }
+        Err(e) => CaptureResult {
+            success: false,
+            changed: false,
+            summary: String::new(),
+            saved_id: None,
+            error: Some(e.to_string()),
+        },
+    }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Smart Capture — The Main Feature
+// ═══════════════════════════════════════════════════════════════════════════════
+
 #[tauri::command]
-fn capture_and_ocr(
-    _app: tauri::AppHandle,
+fn smart_capture(
     db: State<DbConnection>,
-    capture_state: State<ContinuousCaptureState>,
-) -> ContinuousCaptureResult {
-    // Take screenshot to temp location
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let temp_dir = std::env::temp_dir().join("contextbridge_capture");
-    std::fs::create_dir_all(&temp_dir).ok();
-    let temp_path = temp_dir.join(format!("capture_{}.png", timestamp));
+    capture_state: State<CaptureState>,
+) -> CaptureResult {
+    // Get current window info
+    let window = get_active_window();
+    let clipboard = get_clipboard();
     
-    // Capture screenshot silently
-    let capture_result = Command::new("screencapture")
-        .args(["-x", "-C", temp_path.to_str().unwrap_or("/tmp/cb_ocr.png")])
-        .output();
+    // Generate a smart summary
+    let summary = generate_smart_summary(
+        &window.app_name,
+        &window.window_title,
+        if clipboard.content.len() > 5 { Some(&clipboard.content) } else { None }
+    );
     
-    let capture_ok = match capture_result {
-        Ok(output) => output.status.success(),
-        Err(_) => false,
-    };
+    // Create a content hash to detect changes
+    let content_key = format!("{}|{}|{}", window.app_name, window.window_title, &clipboard.content[..clipboard.content.len().min(100)]);
+    let content_hash = calculate_content_hash(&content_key);
     
-    if !capture_ok {
-        return ContinuousCaptureResult {
-            success: false,
-            changed: false,
-            ocr_text: None,
-            saved_memory_id: None,
-            error: Some("Screenshot capture failed".to_string()),
-        };
-    }
+    // Check if anything changed
+    let last_hash = *capture_state.last_content_hash.lock().unwrap();
+    let last_window = capture_state.last_window_info.lock().unwrap().clone();
+    let current_window = format!("{}|{}", window.app_name, window.window_title);
     
-    // Calculate image hash for frame differencing
-    let current_hash = calculate_image_hash(temp_path.to_str().unwrap_or("")).unwrap_or(0);
-    let last_hash = *capture_state.last_frame_hash.lock().unwrap();
-    
-    // If screen hasn't changed significantly, skip OCR
-    if current_hash == last_hash && last_hash != 0 {
-        // Delete temp file
-        std::fs::remove_file(&temp_path).ok();
-        
-        return ContinuousCaptureResult {
+    // If nothing changed, skip
+    if content_hash == last_hash && current_window == last_window {
+        return CaptureResult {
             success: true,
             changed: false,
-            ocr_text: None,
-            saved_memory_id: None,
+            summary: String::new(),
+            saved_id: None,
             error: None,
         };
     }
     
-    // Update last frame hash
-    *capture_state.last_frame_hash.lock().unwrap() = current_hash;
-    
-    // Perform OCR
-    let ocr_result = perform_ocr(temp_path.to_str().unwrap_or(""));
-    
-    // Delete temp screenshot immediately after OCR
-    std::fs::remove_file(&temp_path).ok();
-    
-    if !ocr_result.success {
-        return ContinuousCaptureResult {
-            success: false,
-            changed: true,
-            ocr_text: None,
-            saved_memory_id: None,
-            error: ocr_result.error,
-        };
-    }
-    
-    let ocr_text = match ocr_result.text {
-        Some(text) if !text.trim().is_empty() => text,
-        _ => {
-            return ContinuousCaptureResult {
-                success: true,
-                changed: true,
-                ocr_text: None,
-                saved_memory_id: None,
-                error: None,
-            };
-        }
-    };
-    
-    // Check similarity with last OCR text
-    let last_ocr = capture_state.last_ocr_text.lock().unwrap().clone();
-    let similarity = text_similarity(&ocr_text, &last_ocr);
-    
-    // If text is too similar (>80% overlap), skip saving
-    if similarity > 0.8 {
-        return ContinuousCaptureResult {
-            success: true,
-            changed: true,
-            ocr_text: Some(ocr_text),
-            saved_memory_id: None,
-            error: None,
-        };
-    }
-    
-    // Update last OCR text
-    *capture_state.last_ocr_text.lock().unwrap() = ocr_text.clone();
-    
-    // Increment capture count
+    // Update state
+    *capture_state.last_content_hash.lock().unwrap() = content_hash;
+    *capture_state.last_window_info.lock().unwrap() = current_window;
     *capture_state.capture_count.lock().unwrap() += 1;
     
-    // Get active window for context
-    let active_window = get_active_window();
-    
-    // Auto-generate tags based on content
-    let mut tags = vec!["ocr".to_string(), "screen-capture".to_string()];
-    if ocr_text.contains("http://") || ocr_text.contains("https://") {
-        tags.push("contains-url".to_string());
+    // Skip if unknown app or system UI
+    if window.app_name == "Unknown" || window.app_name == "loginwindow" || window.app_name == "ScreenSaverEngine" {
+        return CaptureResult {
+            success: true,
+            changed: false,
+            summary: String::new(),
+            saved_id: None,
+            error: None,
+        };
     }
-    if ocr_text.lines().any(|l| l.contains("func ") || l.contains("fn ") || l.contains("def ") || l.contains("class ")) {
-        tags.push("code".to_string());
+    
+    // Auto-generate tags
+    let mut tags = vec!["activity".to_string()];
+    let app_lower = window.app_name.to_lowercase();
+    
+    if app_lower.contains("code") || app_lower.contains("terminal") || app_lower.contains("xcode") {
+        tags.push("coding".to_string());
+    }
+    if app_lower.contains("chrome") || app_lower.contains("safari") || app_lower.contains("firefox") || app_lower.contains("arc") {
+        tags.push("browsing".to_string());
+    }
+    if app_lower.contains("slack") || app_lower.contains("discord") || app_lower.contains("messages") || app_lower.contains("zoom") {
+        tags.push("communication".to_string());
     }
     
     // Save to database
     let conn = match db.0.lock() {
         Ok(c) => c,
         Err(e) => {
-            return ContinuousCaptureResult {
+            return CaptureResult {
                 success: false,
                 changed: true,
-                ocr_text: Some(ocr_text),
-                saved_memory_id: None,
+                summary: summary.clone(),
+                saved_id: None,
                 error: Some(format!("Database error: {}", e)),
             };
         }
     };
     
     // Check for duplicates
-    let content_hash = calculate_content_hash(&ocr_text);
-    if is_duplicate_content(&conn, &content_hash, 1) {
-        return ContinuousCaptureResult {
+    let content_hash_str = format!("{:x}", content_hash);
+    if is_duplicate_recent(&conn, &content_hash_str, 2) {
+        return CaptureResult {
             success: true,
             changed: true,
-            ocr_text: Some(ocr_text),
-            saved_memory_id: None,
+            summary,
+            saved_id: None,
             error: None,
         };
     }
@@ -887,64 +786,58 @@ fn capture_and_ocr(
     let id = Uuid::new_v4().to_string();
     let now = Local::now().to_rfc3339();
     let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
-    let source_app = if active_window.app_name != "Unknown" {
-        active_window.app_name.clone()
-    } else {
-        "Screen".to_string()
-    };
-    
-    let embedding = build_term_vector(&ocr_text);
+    let embedding = build_term_vector(&summary);
     
     let insert_result = conn.execute(
         "INSERT INTO memories (id, content, embedding, tags, source_app, source, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        params![id, ocr_text, embedding, tags_json, source_app, "ocr", content_hash, now, now],
+        params![id, summary, embedding, tags_json, window.app_name, "smart-capture", content_hash_str, now, now],
     );
     
     match insert_result {
-        Ok(_) => ContinuousCaptureResult {
+        Ok(_) => CaptureResult {
             success: true,
             changed: true,
-            ocr_text: Some(ocr_text),
-            saved_memory_id: Some(id),
+            summary,
+            saved_id: Some(id),
             error: None,
         },
-        Err(e) => ContinuousCaptureResult {
+        Err(e) => CaptureResult {
             success: false,
             changed: true,
-            ocr_text: Some(ocr_text),
-            saved_memory_id: None,
+            summary,
+            saved_id: None,
             error: Some(format!("Failed to save: {}", e)),
         },
     }
 }
 
 #[tauri::command]
-fn start_continuous_capture(capture_state: State<ContinuousCaptureState>) -> ContinuousCaptureStatus {
+fn start_capture(capture_state: State<CaptureState>) -> CaptureStatus {
     *capture_state.is_active.lock().unwrap() = true;
     *capture_state.capture_count.lock().unwrap() = 0;
-    *capture_state.last_frame_hash.lock().unwrap() = 0;
-    *capture_state.last_ocr_text.lock().unwrap() = String::new();
+    *capture_state.last_content_hash.lock().unwrap() = 0;
+    *capture_state.last_window_info.lock().unwrap() = String::new();
     
-    ContinuousCaptureStatus {
+    CaptureStatus {
         is_active: true,
         capture_count: 0,
     }
 }
 
 #[tauri::command]
-fn stop_continuous_capture(capture_state: State<ContinuousCaptureState>) -> ContinuousCaptureStatus {
+fn stop_capture(capture_state: State<CaptureState>) -> CaptureStatus {
     let count = *capture_state.capture_count.lock().unwrap();
     *capture_state.is_active.lock().unwrap() = false;
     
-    ContinuousCaptureStatus {
+    CaptureStatus {
         is_active: false,
         capture_count: count,
     }
 }
 
 #[tauri::command]
-fn get_continuous_capture_status(capture_state: State<ContinuousCaptureState>) -> ContinuousCaptureStatus {
-    ContinuousCaptureStatus {
+fn get_capture_status(capture_state: State<CaptureState>) -> CaptureStatus {
+    CaptureStatus {
         is_active: *capture_state.is_active.lock().unwrap(),
         capture_count: *capture_state.capture_count.lock().unwrap(),
     }
@@ -954,116 +847,157 @@ fn get_continuous_capture_status(capture_state: State<ContinuousCaptureState>) -
 // Screen Recording Commands
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RecordingResult {
-    pub success: bool,
-    pub is_recording: bool,
-    pub path: Option<String>,
-    pub error: Option<String>,
+fn get_recordings_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(".contextbridge")
+        .join("recordings")
 }
 
 #[tauri::command]
-fn start_screen_recording(
-    app: tauri::AppHandle,
-    recording_state: State<RecordingState>,
-) -> RecordingResult {
-    let mut is_recording = recording_state.is_recording.lock().unwrap();
-    
-    if *is_recording {
+fn start_recording(recording_state: State<RecordingState>) -> RecordingResult {
+    // Check if already recording
+    if *recording_state.is_recording.lock().unwrap() {
         return RecordingResult {
             success: false,
-            is_recording: true,
             path: None,
             error: Some("Already recording".to_string()),
         };
     }
     
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    let recordings_dir = data_dir.join("recordings");
-    std::fs::create_dir_all(&recordings_dir).ok();
+    // Create recordings directory
+    let recordings_dir = get_recordings_dir();
+    if let Err(e) = std::fs::create_dir_all(&recordings_dir) {
+        return RecordingResult {
+            success: false,
+            path: None,
+            error: Some(format!("Failed to create recordings directory: {}", e)),
+        };
+    }
     
+    // Generate filename with timestamp
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let path = recordings_dir.join(format!("recording_{}.mov", timestamp));
+    let filename = format!("recording_{}.mov", timestamp);
+    let path = recordings_dir.join(&filename);
     let path_str = path.to_string_lossy().to_string();
     
+    // Start screen recording using screencapture -V (video mode)
+    // -V records video, -C captures cursor, -T 0 means no timeout (runs until stopped)
     match Command::new("screencapture")
-        .args(["-V", "36000", "-C", &path_str])
+        .args(["-V", "-C", &path_str])
         .spawn()
     {
         Ok(child) => {
-            *recording_state.process.lock().unwrap() = Some(child);
-            *recording_state.current_path.lock().unwrap() = Some(path_str.clone());
-            *is_recording = true;
+            let pid = child.id();
+            *recording_state.is_recording.lock().unwrap() = true;
+            *recording_state.recording_pid.lock().unwrap() = Some(pid);
+            *recording_state.recording_path.lock().unwrap() = Some(path_str.clone());
+            *recording_state.recording_start.lock().unwrap() = Some(Local::now().to_rfc3339());
             
             RecordingResult {
                 success: true,
-                is_recording: true,
                 path: Some(path_str),
                 error: None,
             }
         }
         Err(e) => RecordingResult {
             success: false,
-            is_recording: false,
             path: None,
-            error: Some(e.to_string()),
+            error: Some(format!("Failed to start recording: {}", e)),
         },
     }
 }
 
 #[tauri::command]
-fn stop_screen_recording(recording_state: State<RecordingState>) -> RecordingResult {
-    let mut is_recording = recording_state.is_recording.lock().unwrap();
-    let mut process = recording_state.process.lock().unwrap();
-    let current_path = recording_state.current_path.lock().unwrap().clone();
-    
-    if !*is_recording {
+fn stop_recording(recording_state: State<RecordingState>) -> RecordingResult {
+    // Check if recording
+    if !*recording_state.is_recording.lock().unwrap() {
         return RecordingResult {
             success: false,
-            is_recording: false,
             path: None,
             error: Some("Not recording".to_string()),
         };
     }
     
-    if let Some(mut child) = process.take() {
-        #[cfg(unix)]
-        {
-            unsafe {
-                libc::kill(child.id() as i32, libc::SIGINT);
-            }
-        }
+    // Get the recording PID and path
+    let pid = recording_state.recording_pid.lock().unwrap().take();
+    let path = recording_state.recording_path.lock().unwrap().clone();
+    
+    // Stop recording by sending SIGINT to the process
+    if let Some(pid) = pid {
+        // Use kill to send SIGINT (Ctrl+C) which gracefully stops screencapture
+        let _ = Command::new("kill")
+            .args(["-INT", &pid.to_string()])
+            .output();
         
+        // Give it a moment to finalize the file
         std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = child.kill();
-        let _ = child.wait();
     }
     
-    *is_recording = false;
-    *recording_state.current_path.lock().unwrap() = None;
+    // Update state
+    *recording_state.is_recording.lock().unwrap() = false;
+    *recording_state.recording_start.lock().unwrap() = None;
     
     RecordingResult {
         success: true,
-        is_recording: false,
-        path: current_path,
+        path,
         error: None,
     }
 }
 
 #[tauri::command]
-fn get_recording_status(recording_state: State<RecordingState>) -> RecordingResult {
+fn get_recording_status(recording_state: State<RecordingState>) -> RecordingStatus {
     let is_recording = *recording_state.is_recording.lock().unwrap();
-    let current_path = recording_state.current_path.lock().unwrap().clone();
+    let recording_path = recording_state.recording_path.lock().unwrap().clone();
+    let recording_start = recording_state.recording_start.lock().unwrap().clone();
     
-    RecordingResult {
-        success: true,
+    // Calculate duration if recording
+    let duration_seconds = if is_recording {
+        if let Some(ref start_str) = recording_start {
+            if let Ok(start) = chrono::DateTime::parse_from_rfc3339(start_str) {
+                let now = Local::now();
+                Some((now.signed_duration_since(start.with_timezone(&Local))).num_seconds() as u64)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    RecordingStatus {
         is_recording,
-        path: current_path,
-        error: None,
+        recording_path: if is_recording { recording_path } else { None },
+        recording_start: if is_recording { recording_start } else { None },
+        duration_seconds,
     }
+}
+
+#[tauri::command]
+fn list_recordings() -> Result<Vec<String>, String> {
+    let recordings_dir = get_recordings_dir();
+    
+    if !recordings_dir.exists() {
+        return Ok(vec![]);
+    }
+    
+    let mut recordings: Vec<String> = std::fs::read_dir(&recordings_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry.path().extension()
+                .map(|ext| ext == "mov" || ext == "mp4")
+                .unwrap_or(false)
+        })
+        .map(|entry| entry.path().to_string_lossy().to_string())
+        .collect();
+    
+    // Sort by filename (which includes timestamp, so newest first)
+    recordings.sort_by(|a, b| b.cmp(a));
+    
+    Ok(recordings)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1080,14 +1014,14 @@ pub fn run() {
         }
     };
 
+    let capture_state = CaptureState::default();
     let recording_state = RecordingState::default();
-    let continuous_capture_state = ContinuousCaptureState::default();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(db)
+        .manage(capture_state)
         .manage(recording_state)
-        .manage(continuous_capture_state)
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -1099,8 +1033,7 @@ pub fn run() {
 
             let quit = MenuItem::with_id(app, "quit", "Quit ContextBridge", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "Show Dashboard", true, None::<&str>)?;
-            let capture = MenuItem::with_id(app, "capture", "Capture Now", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &capture, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
@@ -1114,11 +1047,6 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
-                        }
-                    }
-                    "capture" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.emit("trigger-capture", ());
                         }
                     }
                     _ => {}
@@ -1136,19 +1064,19 @@ pub fn run() {
             delete_memory,
             delete_all_memories,
             // Capture
-            capture_screenshot,
             get_active_window,
             get_clipboard,
-            // OCR & Continuous Capture
-            perform_ocr_on_image,
-            capture_and_ocr,
-            start_continuous_capture,
-            stop_continuous_capture,
-            get_continuous_capture_status,
+            capture_screenshot,
+            // Smart Capture
+            smart_capture,
+            start_capture,
+            stop_capture,
+            get_capture_status,
             // Screen Recording
-            start_screen_recording,
-            stop_screen_recording,
+            start_recording,
+            stop_recording,
             get_recording_status,
+            list_recordings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

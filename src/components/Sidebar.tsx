@@ -1,6 +1,6 @@
 /**
  * Sidebar - Premium navigation with glass morphism
- * Inspired by Linear, Arc, and Raycast
+ * Updated for new capture context
  */
 import { useState, useEffect } from 'react';
 import { LayoutDashboard, Shield, Settings, Sparkles, Zap, Database } from 'lucide-react';
@@ -20,9 +20,8 @@ const nav = [
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: Props) {
-  const { status, events } = useCaptureContext();
+  const { isActive, events } = useCaptureContext();
   const [stats, setStats] = useState<MemoryStats | null>(null);
-  const isActive = status === 'active';
 
   // Fetch stats periodically
   useEffect(() => {
@@ -78,7 +77,7 @@ export default function Sidebar({ currentPage, onNavigate }: Props) {
               {isActive ? (
                 <>
                   <span className="text-emerald-400 animate-pulse-soft">●</span>
-                  <span className="text-emerald-400/90">Recording</span>
+                  <span className="text-emerald-400/90">Capturing</span>
                 </>
               ) : (
                 <>
