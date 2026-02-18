@@ -520,7 +520,7 @@ export default function Settings() {
               </div>
               <div className="space-y-2 text-[12px] text-zinc-400 relative">
                 <p>Universal AI Memory — Your context, everywhere</p>
-                <p className="text-[11px] text-zinc-600">Built with Tauri + React + Rust</p>
+                <p className="text-[11px] text-zinc-600">Built with Tauri + React + Rust · Rebuilt Feb 2026</p>
                 <div className="flex gap-4 pt-3">
                   <a 
                     href="https://github.com/nikonadreau/contextbridge" 
