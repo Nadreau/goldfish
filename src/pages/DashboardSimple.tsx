@@ -142,6 +142,14 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* System Ready */}
+      {hasPermission === true && hasTesseract === true && !isActive && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 mb-4 flex items-center gap-2">
+          <CheckCircle size={16} className="text-emerald-400" />
+          <span className="text-sm text-emerald-400">System ready — Click toggle to start capturing</span>
+        </div>
+      )}
+
       {/* Test Result */}
       {testResult && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 mb-4 text-sm text-zinc-300">
