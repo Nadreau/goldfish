@@ -151,7 +151,7 @@ export default function Chat() {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-white">Ask Your Memory</h1>
-              <p className="text-xs text-zinc-500">Powered by Gemini · {contextCount} memories</p>
+              <p className="text-xs text-zinc-500">Gemini 1.5 Flash · {contextCount} memories</p>
             </div>
           </div>
           {messages.length > 0 && (
