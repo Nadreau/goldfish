@@ -30,7 +30,17 @@ export default function Dashboard() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [topApps, setTopApps] = useState<{ app: string; count: number }[]>([]);
   const [sessionStart] = useState(() => Date.now());
+  const [toggling, setToggling] = useState(false);
   const captureInterval = parseInt(localStorage.getItem('capture_interval') || '1000');
+
+  const handleToggle = async () => {
+    setToggling(true);
+    try {
+      await toggleCapture();
+    } finally {
+      setToggling(false);
+    }
+  };
 
   // Check permission and tesseract on mount
   useEffect(() => {
@@ -161,8 +171,9 @@ export default function Dashboard() {
           THE BIG TOGGLE
           ═══════════════════════════════════════════════════════════════════ */}
       <button
-        onClick={toggleCapture}
-        className={`w-full flex items-center justify-between p-6 rounded-2xl transition-all duration-300 mb-6 ${
+        onClick={handleToggle}
+        disabled={toggling}
+        className={`w-full flex items-center justify-between p-6 rounded-2xl transition-all duration-300 mb-6 disabled:opacity-70 ${
           isActive
             ? 'bg-emerald-500/10 border-2 border-emerald-500/50'
             : 'bg-zinc-900 border-2 border-zinc-800 hover:border-zinc-700'
