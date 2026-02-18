@@ -78,7 +78,8 @@ pub fn ocr_tesseract(image_path: &PathBuf) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// OCR using macOS Vision framework via swift command
+/// OCR using macOS Vision framework via swift command (reserved for future use)
+#[allow(dead_code)]
 pub fn ocr_vision(image_path: &PathBuf) -> Result<String, String> {
     // Try Vision via swift first, fall back to tesseract
     let swift_code = format!(r#"
