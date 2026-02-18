@@ -233,7 +233,12 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 text-zinc-500 mb-3">
             <FileText size={16} />
             <span className="text-xs uppercase">Last Capture</span>
-            <span className="text-xs text-zinc-600 ml-auto">{lastCapture.source_app || 'Unknown'}</span>
+            <span className="text-xs text-emerald-400 ml-2">
+              {new Date(lastCapture.timestamp).toLocaleTimeString()}
+            </span>
+            <span className="text-xs text-zinc-600 ml-auto">
+              {lastCapture.source_app || 'Unknown'} · {lastCapture.content.length.toLocaleString()} chars
+            </span>
           </div>
           <pre className="text-xs text-zinc-400 font-mono whitespace-pre-wrap line-clamp-4 overflow-hidden">
             {lastCapture.content}
