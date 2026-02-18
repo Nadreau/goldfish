@@ -156,7 +156,9 @@ export default function Chat() {
           </div>
           {messages.length > 0 && (
             <button
-              onClick={() => setMessages([])}
+              onClick={() => {
+                if (confirm('Clear all messages?')) setMessages([]);
+              }}
               className="p-2 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
               title="Clear chat"
             >
