@@ -259,6 +259,9 @@ System:
 13. `dfa4fd9` - Save toast notification
 14. `cd24a89` - Improved activity feed visuals
 15. `9dae622` - Test OCR button to verify capture
+16. `68f0c61` - Top apps summary on Dashboard
+
+**Total: 21+ commits overnight!**
 
 **Key Additions:**
 - Rapid OCR capture pipeline (screenshot → tesseract → SQLite)
