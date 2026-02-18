@@ -200,7 +200,11 @@ export default function Dashboard() {
             <p className="text-sm text-zinc-500 mt-1 flex items-center gap-3">
               {isActive 
                 ? `${captureCount} captures · OCR every ${captureInterval < 1000 ? captureInterval + 'ms' : (captureInterval/1000) + 's'}`
-                : 'Click to start · ⌘⇧C'}
+                : (
+                  <>
+                    Click to start · <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-xs font-mono">⌘⇧C</kbd>
+                  </>
+                )}
               {!isActive && (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleTestCapture(); }}
