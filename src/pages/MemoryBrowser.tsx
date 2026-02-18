@@ -240,7 +240,7 @@ export default function MemoryBrowser() {
               <div>
                 <h2 className="text-lg font-medium text-white">Memory Detail</h2>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  {new Date(selected.timestamp).toLocaleString()} · {selected.source_app || 'Unknown app'}
+                  {new Date(selected.timestamp).toLocaleString()} · {selected.source_app || 'Unknown'} · {selected.content.length.toLocaleString()} chars
                 </p>
               </div>
               <div className="flex items-center gap-2">
