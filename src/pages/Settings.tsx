@@ -1,9 +1,9 @@
 /**
  * Settings - Premium design with glass morphism
  */
-import { useState } from 'react';
-import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles, Key, Eye, EyeOff, Timer, Play } from 'lucide-react';
-import { deleteAllMemories, getAllMemories, saveMemory } from '../lib/api';
+import { useState, useEffect } from 'react';
+import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles, Key, Eye, EyeOff, Timer, Play, Shield } from 'lucide-react';
+import { deleteAllMemories, getAllMemories, saveMemory, checkCapturePermission, checkTesseractInstalled } from '../lib/api';
 
 export default function Settings() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -19,6 +19,15 @@ export default function Settings() {
   const [autoStart, setAutoStart] = useState(() => {
     return localStorage.getItem('auto_start_capture') === 'true';
   });
+
+  // System health checks
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [hasTesseract, setHasTesseract] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    checkCapturePermission().then(setHasPermission).catch(() => setHasPermission(false));
+    checkTesseractInstalled().then(setHasTesseract).catch(() => setHasTesseract(false));
+  }, []);
 
   const handleSaveGeminiKey = () => {
     if (geminiKey.trim()) {
@@ -151,6 +160,60 @@ export default function Settings() {
               <span className="text-[13px]">{message.text}</span>
             </div>
           )}
+
+          {/* System Health */}
+          <section className="animate-fade-in-up">
+            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
+              System Health
+            </h2>
+            <div className="p-4 rounded-2xl bg-[#111113] border border-white/[0.04]">
+              <div className="grid grid-cols-2 gap-4">
+                <div className={`flex items-center gap-3 p-3 rounded-xl ${
+                  hasPermission === true 
+                    ? 'bg-emerald-500/5 border border-emerald-500/20' 
+                    : hasPermission === false 
+                      ? 'bg-rose-500/5 border border-rose-500/20' 
+                      : 'bg-zinc-800/50 border border-zinc-700/50'
+                }`}>
+                  <Shield size={18} className={
+                    hasPermission === true ? 'text-emerald-400' : hasPermission === false ? 'text-rose-400' : 'text-zinc-500'
+                  } />
+                  <div>
+                    <p className="text-sm font-medium text-white">Screen Recording</p>
+                    <p className={`text-xs ${
+                      hasPermission === true ? 'text-emerald-400' : hasPermission === false ? 'text-rose-400' : 'text-zinc-500'
+                    }`}>
+                      {hasPermission === true ? 'Enabled ✓' : hasPermission === false ? 'Not enabled' : 'Checking...'}
+                    </p>
+                  </div>
+                </div>
+                <div className={`flex items-center gap-3 p-3 rounded-xl ${
+                  hasTesseract === true 
+                    ? 'bg-emerald-500/5 border border-emerald-500/20' 
+                    : hasTesseract === false 
+                      ? 'bg-rose-500/5 border border-rose-500/20' 
+                      : 'bg-zinc-800/50 border border-zinc-700/50'
+                }`}>
+                  <Eye size={18} className={
+                    hasTesseract === true ? 'text-emerald-400' : hasTesseract === false ? 'text-rose-400' : 'text-zinc-500'
+                  } />
+                  <div>
+                    <p className="text-sm font-medium text-white">Tesseract OCR</p>
+                    <p className={`text-xs ${
+                      hasTesseract === true ? 'text-emerald-400' : hasTesseract === false ? 'text-rose-400' : 'text-zinc-500'
+                    }`}>
+                      {hasTesseract === true ? 'Installed ✓' : hasTesseract === false ? 'Not installed' : 'Checking...'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {hasTesseract === false && (
+                <p className="text-xs text-zinc-500 mt-3">
+                  Install with: <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-violet-400">brew install tesseract</code>
+                </p>
+              )}
+            </div>
+          </section>
 
           {/* MCP Server Status */}
           <section className="animate-fade-in-up">
