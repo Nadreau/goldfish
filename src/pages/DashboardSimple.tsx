@@ -350,6 +350,12 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Footer */}
+      <div className="flex-shrink-0 px-6 py-3 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-600">
+        <span>ContextBridge v0.1.0-alpha</span>
+        <span>⌘⇧C to toggle</span>
+      </div>
     </div>
   );
 }
