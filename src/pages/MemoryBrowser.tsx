@@ -2,7 +2,7 @@
  * Memory Browser — View and search all captured memories
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Clock, Monitor, X, ChevronRight, Trash2, Eye, Download } from 'lucide-react';
+import { Search, Clock, Monitor, X, ChevronRight, Trash2, Eye, Download, Copy, Check } from 'lucide-react';
 import { 
   getAllMemories, 
   searchMemories, 
@@ -16,6 +16,7 @@ export default function MemoryBrowser() {
   const [selected, setSelected] = useState<Memory | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'ocr' | 'manual'>('all');
+  const [copied, setCopied] = useState(false);
 
   // Fetch memories
   const fetchMemories = useCallback(async () => {
@@ -59,6 +60,14 @@ export default function MemoryBrowser() {
       if (selected?.id === id) setSelected(null);
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  const handleCopyContent = async () => {
+    if (selected) {
+      await navigator.clipboard.writeText(selected.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -211,6 +220,13 @@ export default function MemoryBrowser() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopyContent}
+                  className="p-2 rounded-lg text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                  title="Copy to clipboard"
+                >
+                  {copied ? <Check size={18} className="text-emerald-400" /> : <Copy size={18} />}
+                </button>
                 <button
                   onClick={() => handleDelete(selected.id)}
                   className="p-2 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
