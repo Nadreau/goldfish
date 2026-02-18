@@ -4,7 +4,8 @@
  */
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { 
-  smartCapture, 
+  smartCapture,
+  rapidCaptureWithOcr,
   startCapture, 
   stopCapture, 
   getCaptureStatus,
@@ -38,8 +39,8 @@ interface CaptureContextValue {
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const MAX_EVENTS = 50;
-const CAPTURE_INTERVAL_MS = 1500; // Every 1.5 seconds
+const MAX_EVENTS = 100;
+const CAPTURE_INTERVAL_MS = 1000; // Every 1 second - RAPID!
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Context
@@ -80,20 +81,31 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
     setEvents(prev => [newEvent, ...prev].slice(0, MAX_EVENTS));
   }, []);
 
-  // Main capture function
+  // Main capture function - uses OCR for real screen understanding
   const doCapture = useCallback(async () => {
     if (isCapturingRef.current) return;
     isCapturingRef.current = true;
     setIsCapturing(true);
 
     try {
-      const result = await smartCapture();
+      // Use rapid OCR capture for full screen understanding
+      const result = await rapidCaptureWithOcr();
       if (result.changed) {
         setCaptureCount(prev => prev + 1);
         addEvent(result);
       }
     } catch (err) {
       console.error('Capture error:', err);
+      // Fallback to smart capture if OCR fails
+      try {
+        const fallbackResult = await smartCapture();
+        if (fallbackResult.changed) {
+          setCaptureCount(prev => prev + 1);
+          addEvent(fallbackResult);
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback capture also failed:', fallbackErr);
+      }
     } finally {
       isCapturingRef.current = false;
       setIsCapturing(false);

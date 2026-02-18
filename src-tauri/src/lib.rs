@@ -13,6 +13,8 @@ use tauri::{
 };
 use uuid::Uuid;
 
+mod capture;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Capture State
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -21,6 +23,7 @@ pub struct CaptureState {
     pub is_active: Mutex<bool>,
     pub last_content_hash: Mutex<u64>,
     pub last_window_info: Mutex<String>,
+    pub last_ocr_text: Mutex<String>,
     pub capture_count: Mutex<u32>,
 }
 
@@ -30,6 +33,7 @@ impl Default for CaptureState {
             is_active: Mutex::new(false),
             last_content_hash: Mutex::new(0),
             last_window_info: Mutex::new(String::new()),
+            last_ocr_text: Mutex::new(String::new()),
             capture_count: Mutex::new(0),
         }
     }
@@ -811,12 +815,162 @@ fn smart_capture(
     }
 }
 
+/// Rapid capture with OCR - takes screenshot, runs OCR, stores meaningful changes
+#[tauri::command]
+fn rapid_capture_with_ocr(
+    db: State<DbConnection>,
+    capture_state: State<CaptureState>,
+) -> CaptureResult {
+    // Take screenshot
+    let screenshot_path = match capture::take_screenshot() {
+        Ok(path) => path,
+        Err(e) => {
+            return CaptureResult {
+                success: false,
+                changed: false,
+                summary: String::new(),
+                saved_id: None,
+                error: Some(format!("Screenshot failed: {}", e)),
+            };
+        }
+    };
+    
+    // Get active window info
+    let (app_name, window_title) = capture::get_active_window();
+    
+    // Run OCR on the screenshot using tesseract (fast and reliable)
+    let ocr_text = capture::ocr_tesseract(&screenshot_path).unwrap_or_default();
+    
+    // Clean up screenshot
+    let _ = std::fs::remove_file(&screenshot_path);
+    
+    // Check for meaningful change using text similarity
+    let last_ocr = capture_state.last_ocr_text.lock().unwrap().clone();
+    let similarity = capture::text_similarity(&ocr_text, &last_ocr);
+    
+    // If >80% similar, skip (no meaningful change)
+    if similarity > 0.8 && !last_ocr.is_empty() {
+        return CaptureResult {
+            success: true,
+            changed: false,
+            summary: String::new(),
+            saved_id: None,
+            error: None,
+        };
+    }
+    
+    // Update last OCR text
+    *capture_state.last_ocr_text.lock().unwrap() = ocr_text.clone();
+    *capture_state.capture_count.lock().unwrap() += 1;
+    
+    // Skip if OCR is too short (likely nothing useful)
+    if ocr_text.len() < 20 {
+        return CaptureResult {
+            success: true,
+            changed: false,
+            summary: String::new(),
+            saved_id: None,
+            error: None,
+        };
+    }
+    
+    // Generate smart summary
+    let summary = generate_smart_summary(&app_name, &window_title, Some(&ocr_text));
+    
+    // Build content with OCR text
+    let content = format!(
+        "[{}] {}\n\n---\n{}",
+        app_name,
+        if window_title.is_empty() { "No title".to_string() } else { window_title.clone() },
+        // Truncate OCR text to avoid huge entries
+        if ocr_text.len() > 2000 { 
+            format!("{}...", &ocr_text[..2000]) 
+        } else { 
+            ocr_text.clone() 
+        }
+    );
+    
+    // Auto-generate tags
+    let mut tags = vec!["ocr-capture".to_string()];
+    let app_lower = app_name.to_lowercase();
+    
+    if app_lower.contains("code") || app_lower.contains("terminal") || app_lower.contains("xcode") {
+        tags.push("coding".to_string());
+    }
+    if app_lower.contains("chrome") || app_lower.contains("safari") || app_lower.contains("firefox") || app_lower.contains("arc") {
+        tags.push("browsing".to_string());
+    }
+    if app_lower.contains("slack") || app_lower.contains("discord") || app_lower.contains("messages") || app_lower.contains("zoom") {
+        tags.push("communication".to_string());
+    }
+    
+    // Calculate content hash
+    let content_hash = calculate_content_hash(&content);
+    let content_hash_str = format!("{:x}", content_hash);
+    
+    // Save to database
+    let conn = match db.0.lock() {
+        Ok(c) => c,
+        Err(e) => {
+            return CaptureResult {
+                success: false,
+                changed: true,
+                summary,
+                saved_id: None,
+                error: Some(format!("Database error: {}", e)),
+            };
+        }
+    };
+    
+    // Check for duplicates
+    if is_duplicate_recent(&conn, &content_hash_str, 5) {
+        return CaptureResult {
+            success: true,
+            changed: false,
+            summary,
+            saved_id: None,
+            error: None,
+        };
+    }
+    
+    let id = Uuid::new_v4().to_string();
+    let now = Local::now().to_rfc3339();
+    let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
+    let embedding = build_term_vector(&content);
+    
+    let insert_result = conn.execute(
+        "INSERT INTO memories (id, content, embedding, tags, source_app, source, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![id, content, embedding, tags_json, app_name, "ocr-capture", content_hash_str, now, now],
+    );
+    
+    // Periodic cleanup of old screenshots
+    capture::cleanup_old_screenshots();
+    
+    match insert_result {
+        Ok(_) => CaptureResult {
+            success: true,
+            changed: true,
+            summary,
+            saved_id: Some(id),
+            error: None,
+        },
+        Err(e) => CaptureResult {
+            success: false,
+            changed: true,
+            summary,
+            saved_id: None,
+            error: Some(format!("Failed to save: {}", e)),
+        },
+    }
+}
+
 #[tauri::command]
 fn start_capture(capture_state: State<CaptureState>) -> CaptureStatus {
     *capture_state.is_active.lock().unwrap() = true;
     *capture_state.capture_count.lock().unwrap() = 0;
     *capture_state.last_content_hash.lock().unwrap() = 0;
     *capture_state.last_window_info.lock().unwrap() = String::new();
+    *capture_state.last_ocr_text.lock().unwrap() = String::new();
     
     CaptureStatus {
         is_active: true,
@@ -1069,6 +1223,7 @@ pub fn run() {
             capture_screenshot,
             // Smart Capture
             smart_capture,
+            rapid_capture_with_ocr,
             start_capture,
             stop_capture,
             get_capture_status,

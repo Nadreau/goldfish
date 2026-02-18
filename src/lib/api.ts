@@ -123,6 +123,11 @@ export async function smartCapture(): Promise<CaptureResult> {
   return invoke<CaptureResult>('smart_capture');
 }
 
+/** Rapid capture with OCR - takes screenshot + OCR every call */
+export async function rapidCaptureWithOcr(): Promise<CaptureResult> {
+  return invoke<CaptureResult>('rapid_capture_with_ocr');
+}
+
 export async function startCapture(): Promise<CaptureStatus> {
   return invoke<CaptureStatus>('start_capture');
 }
