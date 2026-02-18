@@ -378,11 +378,14 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
         <p className={`text-sm truncate ${event.saved ? 'text-emerald-300' : 'text-zinc-300'}`}>
           {event.summary}
         </p>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          {event.app && (
+            <span className="text-xs text-zinc-600 px-1.5 py-0.5 rounded bg-zinc-800/50">{event.app}</span>
+          )}
           <Clock size={10} className="text-zinc-600" />
           <span className="text-xs text-zinc-600">{formatTime(event.timestamp)}</span>
           {event.saved && (
-            <span className="text-xs text-emerald-500 font-medium">✓ OCR saved</span>
+            <span className="text-xs text-emerald-500 font-medium">✓ OCR</span>
           )}
         </div>
       </div>
