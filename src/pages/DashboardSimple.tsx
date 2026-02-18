@@ -2,9 +2,9 @@
  * Dashboard — Clean, Simple, One Toggle
  */
 import { useState, useEffect } from 'react';
-import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle, CheckCircle, HardDrive } from 'lucide-react';
 import { useCaptureContext, type ActivityEvent } from '../lib/captureContext';
-import { getMemoryStats, getAllMemories, checkCapturePermission, checkTesseractInstalled, rapidCaptureWithOcr, type MemoryStats, type Memory } from '../lib/api';
+import { getMemoryStats, getAllMemories, checkCapturePermission, checkTesseractInstalled, rapidCaptureWithOcr, formatBytes, type MemoryStats, type Memory } from '../lib/api';
 
 // Calculate top apps from recent memories
 function getTopApps(memories: Memory[]): { app: string; count: number }[] {
@@ -212,13 +212,13 @@ export default function Dashboard() {
       {/* ═══════════════════════════════════════════════════════════════════
           QUICK STATS
           ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
           <div className="flex items-center gap-2 text-zinc-500 mb-2">
             <Brain size={16} />
-            <span className="text-xs uppercase">Total Memories</span>
+            <span className="text-xs uppercase">Total</span>
           </div>
-          <p className="text-3xl font-bold text-white">{stats?.total_memories ?? 0}</p>
+          <p className="text-2xl font-bold text-white">{stats?.total_memories ?? 0}</p>
         </div>
         
         <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
@@ -226,20 +226,28 @@ export default function Dashboard() {
             <Zap size={16} />
             <span className="text-xs uppercase">Today</span>
           </div>
-          <p className="text-3xl font-bold text-amber-400">{stats?.memories_today ?? 0}</p>
+          <p className="text-2xl font-bold text-amber-400">{stats?.memories_today ?? 0}</p>
         </div>
         
         <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
           <div className="flex items-center gap-2 text-zinc-500 mb-2">
             <Eye size={16} />
-            <span className="text-xs uppercase">This Session</span>
+            <span className="text-xs uppercase">Session</span>
           </div>
-          <p className="text-3xl font-bold text-violet-400">{captureCount}</p>
+          <p className="text-2xl font-bold text-violet-400">{captureCount}</p>
           {isActive && captureCount > 0 && (
             <p className="text-xs text-zinc-500 mt-1">
               ~{Math.round(captureCount / Math.max(1, (Date.now() - sessionStart) / 60000))}/min
             </p>
           )}
+        </div>
+
+        <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
+          <div className="flex items-center gap-2 text-zinc-500 mb-2">
+            <HardDrive size={16} />
+            <span className="text-xs uppercase">Storage</span>
+          </div>
+          <p className="text-2xl font-bold text-cyan-400">{stats ? formatBytes(stats.storage_bytes) : '0 B'}</p>
         </div>
       </div>
 
