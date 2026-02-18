@@ -17,6 +17,18 @@ export default function Dashboard() {
     checkCapturePermission().then(setHasPermission).catch(() => setHasPermission(false));
   }, []);
 
+  // Keyboard shortcut: Cmd+Shift+C to toggle capture
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
+        e.preventDefault();
+        toggleCapture();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleCapture]);
+
   // Fetch stats and last capture
   useEffect(() => {
     const fetch = async () => {
@@ -87,7 +99,7 @@ export default function Dashboard() {
             <p className="text-sm text-zinc-500 mt-1">
               {isActive 
                 ? `${captureCount} captures · OCR every 1s`
-                : 'Click to start screen capture + OCR'}
+                : 'Click to start · ⌘⇧C'}
             </p>
           </div>
         </div>
