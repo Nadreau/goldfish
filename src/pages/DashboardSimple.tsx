@@ -173,12 +173,16 @@ export default function Dashboard() {
       <button
         onClick={handleToggle}
         disabled={toggling}
-        className={`w-full flex items-center justify-between p-6 rounded-2xl transition-all duration-300 mb-6 disabled:opacity-70 ${
+        className={`w-full flex items-center justify-between p-6 rounded-2xl transition-all duration-300 mb-6 disabled:opacity-70 relative overflow-hidden ${
           isActive
             ? 'bg-emerald-500/10 border-2 border-emerald-500/50'
             : 'bg-zinc-900 border-2 border-zinc-800 hover:border-zinc-700'
         }`}
       >
+        {/* Capture pulse animation */}
+        {isActive && isCapturing && (
+          <div className="absolute inset-0 bg-emerald-500/5 animate-pulse pointer-events-none" />
+        )}
         <div className="flex items-center gap-4">
           {/* Pulsing indicator */}
           <div className="relative">
