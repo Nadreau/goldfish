@@ -6,6 +6,19 @@ import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle, CheckCircle } f
 import { useCaptureContext, type ActivityEvent } from '../lib/captureContext';
 import { getMemoryStats, getAllMemories, checkCapturePermission, rapidCaptureWithOcr, type MemoryStats, type Memory } from '../lib/api';
 
+// Calculate top apps from recent memories
+function getTopApps(memories: Memory[]): { app: string; count: number }[] {
+  const appCounts: Record<string, number> = {};
+  memories.forEach(m => {
+    const app = m.source_app || 'Unknown';
+    appCounts[app] = (appCounts[app] || 0) + 1;
+  });
+  return Object.entries(appCounts)
+    .map(([app, count]) => ({ app, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+}
+
 export default function Dashboard() {
   const { isActive, captureCount, events, isCapturing, toggleCapture } = useCaptureContext();
   const [stats, setStats] = useState<MemoryStats | null>(null);
@@ -14,6 +27,7 @@ export default function Dashboard() {
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [testingCapture, setTestingCapture] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [topApps, setTopApps] = useState<{ app: string; count: number }[]>([]);
 
   // Check permission on mount
   useEffect(() => {
@@ -58,9 +72,10 @@ export default function Dashboard() {
     const fetch = async () => {
       try {
         setStats(await getMemoryStats());
-        const memories = await getAllMemories(1);
+        const memories = await getAllMemories(20);
         if (memories.length > 0) {
           setLastCapture(memories[0]);
+          setTopApps(getTopApps(memories));
         }
       } catch (e) {
         console.error(e);
@@ -197,6 +212,18 @@ export default function Dashboard() {
           <p className="text-3xl font-bold text-violet-400">{captureCount}</p>
         </div>
       </div>
+
+      {/* Top Apps */}
+      {topApps.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-xs text-zinc-500">Top apps:</span>
+          {topApps.map((item, i) => (
+            <span key={i} className="px-2 py-1 rounded-full bg-zinc-800 text-xs text-zinc-300">
+              {item.app} ({item.count})
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════
           LAST CAPTURE PREVIEW

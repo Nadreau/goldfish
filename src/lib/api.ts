@@ -24,6 +24,12 @@ export interface MemoryStats {
   sources: Record<string, number>;
 }
 
+export interface TodaySummary {
+  apps: Record<string, number>;
+  totalCaptures: number;
+  totalChars: number;
+}
+
 export interface ActiveWindow {
   app_name: string;
   window_title: string;
