@@ -2,7 +2,7 @@
  * Memory Browser — View and search all captured memories
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Clock, Monitor, X, ChevronRight, Trash2, Eye, Download, Copy, Check } from 'lucide-react';
+import { Search, Clock, Monitor, X, ChevronRight, Trash2, Eye, Download, Copy, Check, Loader2 } from 'lucide-react';
 import { 
   getAllMemories, 
   searchMemories, 
@@ -117,7 +117,8 @@ export default function MemoryBrowser() {
           </div>
           
           {/* Filters */}
-          <div className="flex gap-2 mt-3">
+          <div className="flex items-center gap-2 mt-3">
+            {loading && <Loader2 size={14} className="text-violet-400 animate-spin" />}
             {(['all', 'ocr', 'manual'] as const).map((f) => (
               <button
                 key={f}
