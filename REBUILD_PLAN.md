@@ -172,10 +172,49 @@ System:
 3. Go to Chat → ask questions about your captured context
 
 **Still Needs:**
-- [ ] Actually working capture (current only gets window titles)
-- [ ] OCR for screen content
-- [ ] Better app detection
-- [ ] Memory browser page (separate from Privacy page)
+- [x] ~~Actually working capture~~ - Added rapid_capture_with_ocr
+- [x] ~~OCR for screen content~~ - Using tesseract
+- [x] ~~Memory browser page~~ - Created MemoryBrowser.tsx
+
+### 2026-02-18 ~00:45 (Motion - Overnight Grind)
+
+**Major Changes:**
+1. **Rapid OCR Capture** (every 1 second!)
+   - `src-tauri/src/capture.rs` - New capture module with OCR
+   - Uses tesseract for OCR (brew installed)
+   - Takes screenshot → OCR → deduplication → save
+   - Stores full OCR text in memory
+
+2. **Simplified Dashboard** 
+   - `src/pages/DashboardSimple.tsx` - Clean, focused UI
+   - One big toggle, quick stats, live activity feed
+   - No clutter, just what matters
+
+3. **Memory Browser**
+   - `src/pages/MemoryBrowser.tsx` - Browse all memories
+   - Search, filter by type (OCR/manual)
+   - Full detail view with OCR text
+
+**To Test:**
+1. Run `npm run tauri dev`
+2. Click the big toggle to start capturing
+3. Switch between apps, browse web, etc.
+4. Check Memory Browser to see captured OCR text
+5. Try Chat to ask questions about your context
+
+**What's Working:**
+- ✅ 1-second capture interval
+- ✅ Tesseract OCR (brew installed)
+- ✅ Clean Dashboard UI
+- ✅ Memory Browser with search/filter
+- ✅ Gemini Chat integration
+- ✅ Full OCR text storage
+
+**Still TODO:**
+- [ ] Auto-start capture option
+- [ ] Better deduplication (semantic similarity)
+- [ ] Context summarization
+- [ ] Activity classification
 
 ---
 
