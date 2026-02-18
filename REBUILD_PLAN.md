@@ -236,6 +236,21 @@ System:
    - Should show success message with captured text preview
    - If it fails, check tesseract installation and screen recording permissions
 
+9. **Full Workflow Test:**
+   - Dashboard → Toggle ON → Watch activity feed fill up
+   - Memory Browser → Search for something you had on screen
+   - Chat → Ask "What was I looking at?" with Gemini API key set
+   - Settings → Verify System Health shows green for both checks
+
+---
+
+## 🔧 Prerequisites
+
+Before running:
+1. `brew install tesseract` - OCR engine
+2. Screen Recording permission - Go to System Settings → Privacy & Security → Screen Recording → Enable for ContextBridge
+3. (Optional) Gemini API key from https://aistudio.google.com/app/apikey
+
 ---
 
 ## 🎉 What's Impressive
