@@ -255,7 +255,7 @@ Before running:
 
 ## 🎉 What's Impressive
 
-- **41+ commits overnight** - major rebuild
+- **46+ commits overnight** - major rebuild
 - **Real OCR** - tesseract extracts actual screen text
 - **1-second capture interval** - rapid context building
 - **Gemini Chat** - ask questions about your day
@@ -332,7 +332,7 @@ Before running:
 15. `9dae622` - Test OCR button to verify capture
 16. `68f0c61` - Top apps summary on Dashboard
 
-**Total: 39+ commits overnight (still going)!**
+**Total: 46+ commits overnight (still going)!**
 
 ### Latest Batch (01:00-01:04)
 - Top apps summary
