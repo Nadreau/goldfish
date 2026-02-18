@@ -316,7 +316,23 @@ export default function Dashboard() {
         </div>
         
         <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-          {events.length === 0 ? (
+          {events.length === 0 && (stats?.total_memories ?? 0) === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <Brain size={48} className="text-zinc-700 mb-4" />
+              <h3 className="text-lg font-medium text-zinc-400 mb-2">Welcome to ContextBridge!</h3>
+              <p className="text-sm text-zinc-500 mb-4">
+                {isActive 
+                  ? 'Taking screenshots and running OCR... first results coming soon!' 
+                  : 'Click the toggle above to start capturing your screen context.'}
+              </p>
+              <ul className="text-xs text-zinc-600 space-y-1 text-left">
+                <li>✓ Screenshots every {captureInterval < 1000 ? captureInterval + 'ms' : (captureInterval/1000) + 's'}</li>
+                <li>✓ OCR extracts all visible text</li>
+                <li>✓ Ask Gemini about your day in Chat</li>
+                <li>✓ Browse all memories in Memory page</li>
+              </ul>
+            </div>
+          ) : events.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Brain size={48} className="text-zinc-700 mb-4" />
               <p className="text-zinc-500">
