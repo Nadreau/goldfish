@@ -2,14 +2,20 @@
  * Dashboard — Clean, Simple, One Toggle
  */
 import { useState, useEffect } from 'react';
-import { Power, Brain, Zap, Clock, Eye, FileText } from 'lucide-react';
+import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle } from 'lucide-react';
 import { useCaptureContext, type ActivityEvent } from '../lib/captureContext';
-import { getMemoryStats, getAllMemories, type MemoryStats, type Memory } from '../lib/api';
+import { getMemoryStats, getAllMemories, checkCapturePermission, type MemoryStats, type Memory } from '../lib/api';
 
 export default function Dashboard() {
   const { isActive, captureCount, events, isCapturing, toggleCapture } = useCaptureContext();
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [lastCapture, setLastCapture] = useState<Memory | null>(null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+  // Check permission on mount
+  useEffect(() => {
+    checkCapturePermission().then(setHasPermission).catch(() => setHasPermission(false));
+  }, []);
 
   // Fetch stats and last capture
   useEffect(() => {
@@ -41,6 +47,19 @@ export default function Dashboard() {
 
   return (
     <div className="h-full flex flex-col bg-[#09090b] p-6 overflow-hidden">
+      {/* Permission Warning */}
+      {hasPermission === false && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-400">Screen Recording Permission Required</p>
+            <p className="text-xs text-zinc-400 mt-1">
+              Go to System Settings → Privacy & Security → Screen Recording → Enable for ContextBridge
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ═══════════════════════════════════════════════════════════════════
           THE BIG TOGGLE
           ═══════════════════════════════════════════════════════════════════ */}

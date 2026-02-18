@@ -11,6 +11,23 @@ use std::path::PathBuf;
 use std::fs;
 use chrono::Local;
 
+/// Check if screen recording permission is granted
+pub fn check_screen_permission() -> bool {
+    // Try to take a test screenshot - if it fails, likely no permission
+    let temp_path = std::env::temp_dir().join("contextbridge_permission_test.png");
+    let output = Command::new("screencapture")
+        .args(["-x", "-C", &temp_path.to_string_lossy()])
+        .output();
+    
+    // Clean up test file
+    let _ = fs::remove_file(&temp_path);
+    
+    match output {
+        Ok(result) => result.status.success(),
+        Err(_) => false,
+    }
+}
+
 /// Take a screenshot and return the path
 pub fn take_screenshot() -> Result<PathBuf, String> {
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();

@@ -140,6 +140,11 @@ export async function getCaptureStatus(): Promise<CaptureStatus> {
   return invoke<CaptureStatus>('get_capture_status');
 }
 
+/** Check if screen recording permission is granted */
+export async function checkCapturePermission(): Promise<boolean> {
+  return invoke<boolean>('check_capture_permission');
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Screen Recording API
 // ═══════════════════════════════════════════════════════════════════════════════

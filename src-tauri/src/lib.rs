@@ -977,6 +977,12 @@ fn rapid_capture_with_ocr(
     }
 }
 
+/// Check if screen recording permission is granted
+#[tauri::command]
+fn check_capture_permission() -> bool {
+    capture::check_screen_permission()
+}
+
 #[tauri::command]
 fn start_capture(capture_state: State<CaptureState>) -> CaptureStatus {
     *capture_state.is_active.lock().unwrap() = true;
@@ -1237,6 +1243,7 @@ pub fn run() {
             // Smart Capture
             smart_capture,
             rapid_capture_with_ocr,
+            check_capture_permission,
             start_capture,
             stop_capture,
             get_capture_status,
