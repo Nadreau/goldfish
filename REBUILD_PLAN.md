@@ -261,7 +261,16 @@ System:
 15. `9dae622` - Test OCR button to verify capture
 16. `68f0c61` - Top apps summary on Dashboard
 
-**Total: 21+ commits overnight!**
+**Total: 29+ commits overnight (still going)!**
+
+### Latest Batch (01:00-01:04)
+- Top apps summary
+- Captures per minute indicator
+- Copy to clipboard in Memory Browser
+- Current capture interval display
+- Tesseract installation check
+- System Ready indicator
+- Storage usage display
 
 **Key Additions:**
 - Rapid OCR capture pipeline (screenshot → tesseract → SQLite)
