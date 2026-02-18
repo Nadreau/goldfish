@@ -240,11 +240,52 @@ System:
 
 ## 🎉 What's Impressive
 
-- **33+ commits overnight** - major rebuild
+- **41+ commits overnight** - major rebuild
 - **Real OCR** - tesseract extracts actual screen text
 - **1-second capture interval** - rapid context building
 - **Gemini Chat** - ask questions about your day
 - **Full Polish** - health checks, loading states, animations, keyboard shortcuts
+
+## 📋 Complete Feature List
+
+### Dashboard
+- Big toggle button with pulse animation
+- 4-stat grid: Total, Today, Session, Storage
+- Top apps summary
+- Expandable last capture preview
+- System health warnings (permission, tesseract)
+- System Ready indicator
+- Captures/min counter
+- Test OCR button
+- Welcome message for new users
+- Keyboard shortcut ⌘⇧C
+
+### Chat
+- Gemini 1.5 Flash integration
+- Context-aware responses (pulls relevant memories)
+- Suggestion prompts
+- Memory count in header
+- Clear chat button
+- Loading states
+
+### Memory Browser
+- Search with debounce
+- Filter: All / OCR / Manual
+- Copy to clipboard
+- Export to Markdown
+- Delete with confirm
+- Full OCR text view
+- Loading spinner
+- Character count per memory
+
+### Settings
+- System Health panel (permission + tesseract)
+- Gemini API key (with show/hide)
+- Capture interval slider
+- Auto-start toggle
+- MCP config
+- Export/Import memories
+- Delete all with confirm
 
 **What's Working:**
 - ✅ Configurable capture interval (500ms - 5s, default 1s)
