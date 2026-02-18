@@ -2,7 +2,7 @@
  * Dashboard — Clean, Simple, One Toggle
  */
 import { useState, useEffect } from 'react';
-import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle } from 'lucide-react';
+import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useCaptureContext, type ActivityEvent } from '../lib/captureContext';
 import { getMemoryStats, getAllMemories, checkCapturePermission, type MemoryStats, type Memory } from '../lib/api';
 
@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [lastCapture, setLastCapture] = useState<Memory | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [showSaveToast, setShowSaveToast] = useState(false);
 
   // Check permission on mount
   useEffect(() => {
@@ -47,18 +48,32 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Refresh when events change
+  // Refresh when events change + show toast
   useEffect(() => {
     if (events.length > 0) {
       getMemoryStats().then(setStats).catch(console.error);
       getAllMemories(1).then(m => {
         if (m.length > 0) setLastCapture(m[0]);
       }).catch(console.error);
+      
+      // Show save toast if latest event was saved
+      if (events[0]?.saved) {
+        setShowSaveToast(true);
+        setTimeout(() => setShowSaveToast(false), 1500);
+      }
     }
   }, [events.length]);
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b] p-6 overflow-hidden">
+    <div className="h-full flex flex-col bg-[#09090b] p-6 overflow-hidden relative">
+      {/* Save Toast */}
+      {showSaveToast && (
+        <div className="absolute top-4 right-4 bg-emerald-500/20 border border-emerald-500/30 rounded-lg px-4 py-2 flex items-center gap-2 animate-pulse z-50">
+          <CheckCircle size={16} className="text-emerald-400" />
+          <span className="text-sm text-emerald-400">Memory saved</span>
+        </div>
+      )}
+
       {/* Permission Warning */}
       {hasPermission === false && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
