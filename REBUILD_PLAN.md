@@ -240,14 +240,32 @@ System:
 - ✅ Full OCR text storage
 - ✅ Settings page with Gemini key + capture interval
 
-### Latest Changes (00:51)
-- Added capture interval slider in Settings (500ms - 5s)
-- Added "Last Capture" preview on Dashboard
-- Improved Chat page with context count and better prompts
-- Added Gemini Vision helper (for future AI image understanding)
-- Added screen recording permission check with warning banner
-- Added capture timing logs for debugging
-- Full testing guide above
+### Latest Changes (Overnight Grind 00:38 - 00:53)
+
+**12 commits made tonight:**
+
+1. `d5b06ec` - Gemini chat integration + API key settings
+2. `c2d60e0` - Rapid OCR capture (1 sec interval, tesseract OCR)
+3. `59f2900` - Simplify Dashboard + Memory Browser page
+4. `cfe6a99` - Update REBUILD_PLAN with progress
+5. `d462cbf` - Last capture preview on Dashboard
+6. `990f6ac` - Improve Chat page with context count
+7. `762258a` - Configurable capture interval in Settings
+8. `54177d5` - Capture timing logs for debugging
+9. `c0b3a2c` - Screen recording permission check with warning
+10. `61a76ec` - Detailed testing guide
+11. `a1df8cd` - Memory Browser with char count + OCR badge
+12. `b362ab4` - Keyboard shortcut (⌘⇧C) to toggle capture
+
+**Key Additions:**
+- Rapid OCR capture pipeline (screenshot → tesseract → SQLite)
+- Clean Dashboard with one toggle, stats, and last capture preview
+- Memory Browser with search, filters, and full OCR text viewing
+- Chat page with Gemini integration and context awareness
+- Configurable capture interval (500ms - 5s)
+- Permission checking with helpful warning
+- Keyboard shortcut ⌘⇧C for quick toggle
+- Full timing logs for debugging
 
 **Still TODO:**
 - [ ] Auto-start capture option
