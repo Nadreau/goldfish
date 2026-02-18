@@ -209,17 +209,29 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
   };
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-900 transition-colors">
-      <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center flex-shrink-0">
-        <Brain size={14} className="text-violet-400" />
+    <div className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+      event.saved 
+        ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10' 
+        : 'bg-zinc-900/50 border-zinc-800/50 hover:bg-zinc-900'
+    }`}>
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+        event.saved ? 'bg-emerald-500/20' : 'bg-violet-500/10'
+      }`}>
+        {event.saved ? (
+          <Eye size={14} className="text-emerald-400" />
+        ) : (
+          <Brain size={14} className="text-violet-400" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-zinc-300 truncate">{event.summary}</p>
+        <p className={`text-sm truncate ${event.saved ? 'text-emerald-300' : 'text-zinc-300'}`}>
+          {event.summary}
+        </p>
         <div className="flex items-center gap-2 mt-1">
           <Clock size={10} className="text-zinc-600" />
           <span className="text-xs text-zinc-600">{formatTime(event.timestamp)}</span>
           {event.saved && (
-            <span className="text-xs text-emerald-500">● saved</span>
+            <span className="text-xs text-emerald-500 font-medium">✓ OCR saved</span>
           )}
         </div>
       </div>
