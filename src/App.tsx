@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
+import Chat from './pages/Chat';
 import PrivacyControls from './pages/PrivacyControls';
 import Settings from './pages/Settings';
 import { CaptureProvider } from './lib/captureContext';
 
-export type Page = 'dashboard' | 'privacy' | 'settings';
+export type Page = 'dashboard' | 'chat' | 'privacy' | 'settings';
 
 function App() {
   const [page, setPage] = useState<Page>('dashboard');
@@ -22,9 +23,13 @@ function App() {
             break;
           case '2':
             e.preventDefault();
-            setPage('privacy');
+            setPage('chat');
             break;
           case '3':
+            e.preventDefault();
+            setPage('privacy');
+            break;
+          case '4':
             e.preventDefault();
             setPage('settings');
             break;
@@ -47,6 +52,7 @@ function App() {
           {/* Page content with fade animation */}
           <div key={page} className="h-full animate-fade-in">
             {page === 'dashboard' && <Dashboard />}
+            {page === 'chat' && <Chat />}
             {page === 'privacy' && <PrivacyControls />}
             {page === 'settings' && <Settings />}
           </div>

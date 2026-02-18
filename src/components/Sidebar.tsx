@@ -3,7 +3,7 @@
  * Updated for new capture context
  */
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Shield, Settings, Sparkles, Zap, Database } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Shield, Settings, Sparkles, Zap, Database } from 'lucide-react';
 import type { Page } from '../App';
 import { useCaptureContext } from '../lib/captureContext';
 import { getMemoryStats, formatBytes, type MemoryStats } from '../lib/api';
@@ -15,8 +15,9 @@ interface Props {
 
 const nav = [
   { id: 'dashboard' as Page, icon: LayoutDashboard, label: 'Dashboard', shortcut: '⌘1' },
-  { id: 'privacy' as Page, icon: Shield, label: 'Privacy', shortcut: '⌘2' },
-  { id: 'settings' as Page, icon: Settings, label: 'Settings', shortcut: '⌘3' },
+  { id: 'chat' as Page, icon: MessageSquare, label: 'Chat', shortcut: '⌘2' },
+  { id: 'privacy' as Page, icon: Shield, label: 'Memory', shortcut: '⌘3' },
+  { id: 'settings' as Page, icon: Settings, label: 'Settings', shortcut: '⌘4' },
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: Props) {

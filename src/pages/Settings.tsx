@@ -2,7 +2,7 @@
  * Settings - Premium design with glass morphism
  */
 import { useState } from 'react';
-import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles } from 'lucide-react';
+import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles, Key, Eye, EyeOff } from 'lucide-react';
 import { deleteAllMemories, getAllMemories, saveMemory } from '../lib/api';
 
 export default function Settings() {
@@ -10,6 +10,19 @@ export default function Settings() {
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [keyVisible, setKeyVisible] = useState(false);
+
+  const handleSaveGeminiKey = () => {
+    if (geminiKey.trim()) {
+      localStorage.setItem('gemini_api_key', geminiKey.trim());
+      setMessage({ type: 'success', text: 'Gemini API key saved' });
+    } else {
+      localStorage.removeItem('gemini_api_key');
+      setMessage({ type: 'success', text: 'Gemini API key removed' });
+    }
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   const mcpConfig = `"contextbridge": {
   "command": "npx",
@@ -157,6 +170,60 @@ export default function Settings() {
                 >
                   {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Gemini API Key */}
+          <section className="animate-fade-in-up stagger-1">
+            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
+              Chat (Gemini)
+            </h2>
+            <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04] relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 blur-3xl pointer-events-none" />
+              
+              <div className="flex items-center gap-3 mb-4 relative">
+                <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center ring-1 ring-violet-500/20">
+                  <Key size={18} className="text-violet-400" />
+                </div>
+                <div>
+                  <p className="text-[14px] font-medium text-white">Gemini API Key</p>
+                  <p className="text-[11px] text-zinc-500">Powers the Chat feature</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3 relative">
+                <div className="relative">
+                  <input
+                    type={keyVisible ? 'text' : 'password'}
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    placeholder="AIza..."
+                    className="w-full px-4 py-3 pr-20 rounded-xl bg-[#0a0a0c] border border-white/[0.04] text-[13px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500/30"
+                  />
+                  <button
+                    onClick={() => setKeyVisible(!keyVisible)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-zinc-500 hover:text-zinc-300"
+                  >
+                    {keyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener"
+                    className="text-[11px] text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                  >
+                    Get free API key <ExternalLink size={10} />
+                  </a>
+                  <button
+                    onClick={handleSaveGeminiKey}
+                    className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-[12px] font-medium text-white transition-colors"
+                  >
+                    Save Key
+                  </button>
+                </div>
               </div>
             </div>
           </section>
