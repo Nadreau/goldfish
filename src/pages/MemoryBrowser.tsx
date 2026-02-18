@@ -175,7 +175,7 @@ export default function MemoryBrowser() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-300 line-clamp-2">
+                      <p className="text-sm text-zinc-300 line-clamp-2" title={`${memory.content.length.toLocaleString()} characters`}>
                         {memory.content.split('\n')[0]}
                       </p>
                       <div className="flex items-center gap-2 mt-1.5">
