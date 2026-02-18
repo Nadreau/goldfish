@@ -2,7 +2,7 @@
  * Memory Browser — View and search all captured memories
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Clock, Monitor, X, ChevronRight, Trash2 } from 'lucide-react';
+import { Search, Clock, Monitor, X, ChevronRight, Trash2, Eye } from 'lucide-react';
 import { 
   getAllMemories, 
   searchMemories, 
@@ -131,8 +131,16 @@ export default function MemoryBrowser() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-                      <Monitor size={14} className="text-zinc-400" />
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      memory.source === 'ocr-capture' 
+                        ? 'bg-emerald-500/20' 
+                        : 'bg-zinc-800'
+                    }`}>
+                      {memory.source === 'ocr-capture' ? (
+                        <Eye size={14} className="text-emerald-400" />
+                      ) : (
+                        <Monitor size={14} className="text-zinc-400" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-zinc-300 line-clamp-2">
@@ -147,6 +155,8 @@ export default function MemoryBrowser() {
                             <span className="text-xs text-zinc-500">{memory.source_app}</span>
                           </>
                         )}
+                        <span className="text-zinc-700">·</span>
+                        <span className="text-xs text-emerald-500">{memory.content.length.toLocaleString()} chars</span>
                       </div>
                     </div>
                     <ChevronRight size={16} className="text-zinc-700 flex-shrink-0" />
