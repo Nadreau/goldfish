@@ -2,7 +2,7 @@
  * Settings - Premium design with glass morphism
  */
 import { useState } from 'react';
-import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles, Key, Eye, EyeOff, Timer } from 'lucide-react';
+import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles, Key, Eye, EyeOff, Timer, Play } from 'lucide-react';
 import { deleteAllMemories, getAllMemories, saveMemory } from '../lib/api';
 
 export default function Settings() {
@@ -15,6 +15,9 @@ export default function Settings() {
   const [captureInterval, setCaptureInterval] = useState(() => {
     const saved = localStorage.getItem('capture_interval');
     return saved ? parseInt(saved) : 1000;
+  });
+  const [autoStart, setAutoStart] = useState(() => {
+    return localStorage.getItem('auto_start_capture') === 'true';
   });
 
   const handleSaveGeminiKey = () => {
@@ -31,6 +34,14 @@ export default function Settings() {
   const handleSaveCaptureInterval = () => {
     localStorage.setItem('capture_interval', captureInterval.toString());
     setMessage({ type: 'success', text: `Capture interval set to ${captureInterval}ms. Restart app to apply.` });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleToggleAutoStart = () => {
+    const newValue = !autoStart;
+    setAutoStart(newValue);
+    localStorage.setItem('auto_start_capture', newValue.toString());
+    setMessage({ type: 'success', text: newValue ? 'Auto-start enabled' : 'Auto-start disabled' });
     setTimeout(() => setMessage(null), 3000);
   };
 
@@ -281,6 +292,27 @@ export default function Settings() {
                 >
                   Save Interval
                 </button>
+                
+                {/* Auto-start toggle */}
+                <div className="flex items-center justify-between pt-3 border-t border-zinc-800 mt-3">
+                  <div className="flex items-center gap-3">
+                    <Play size={16} className="text-zinc-400" />
+                    <div>
+                      <p className="text-[13px] text-white">Auto-start capture</p>
+                      <p className="text-[11px] text-zinc-500">Start capturing when app opens</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleToggleAutoStart}
+                    className={`w-12 h-6 rounded-full transition-colors ${
+                      autoStart ? 'bg-emerald-500' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                      autoStart ? 'translate-x-6' : 'translate-x-0.5'
+                    }`} />
+                  </button>
+                </div>
               </div>
             </div>
           </section>

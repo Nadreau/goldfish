@@ -143,11 +143,20 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
     };
   }, [isActive, doCapture]);
 
-  // Check initial status on mount
+  // Check initial status on mount + auto-start if enabled
   useEffect(() => {
     getCaptureStatus().then(status => {
       setIsActive(status.is_active);
       setCaptureCount(status.capture_count);
+      
+      // Auto-start capture if enabled and not already active
+      if (!status.is_active && localStorage.getItem('auto_start_capture') === 'true') {
+        console.log('[ContextBridge] Auto-starting capture...');
+        startCapture().then(() => {
+          setIsActive(true);
+          setCaptureCount(0);
+        }).catch(console.error);
+      }
     }).catch(console.error);
   }, []);
 
