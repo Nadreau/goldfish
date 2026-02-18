@@ -53,6 +53,13 @@ User's question: ${prompt}`
     
     const data = await response.json();
     
+    if (data.error) {
+      if (data.error.message?.includes('API_KEY_INVALID')) {
+        return "❌ Invalid API key. Please check your Gemini API key in Settings.";
+      }
+      return `❌ API Error: ${data.error.message || 'Unknown error'}`;
+    }
+    
     if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
       return data.candidates[0].content.parts[0].text;
     }
