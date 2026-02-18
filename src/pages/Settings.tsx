@@ -406,6 +406,9 @@ export default function Settings() {
             <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
               Data Management
             </h2>
+            <p className="text-[11px] text-zinc-600 mb-3 font-mono">
+              📁 ~/.contextbridge/memories.db
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={handleExport}
