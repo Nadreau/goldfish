@@ -658,7 +658,7 @@ fn capture_screenshot(app: tauri::AppHandle) -> CaptureResult {
     std::fs::create_dir_all(&screenshots_dir).ok();
     let path = screenshots_dir.join(format!("capture_{}.png", timestamp));
 
-    match Command::new("screencapture")
+    match Command::new("/usr/sbin/screencapture")
         .args(["-x", "-C", path.to_str().unwrap_or("/tmp/cb_capture.png")])
         .output()
     {
@@ -1062,7 +1062,7 @@ fn start_recording(recording_state: State<RecordingState>) -> RecordingResult {
     
     // Start screen recording using screencapture -V (video mode)
     // -V records video, -C captures cursor, -T 0 means no timeout (runs until stopped)
-    match Command::new("screencapture")
+    match Command::new("/usr/sbin/screencapture")
         .args(["-V", "-C", &path_str])
         .spawn()
     {

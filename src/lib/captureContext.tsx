@@ -44,9 +44,9 @@ const MAX_EVENTS = 100;
 const getStoredInterval = () => {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('capture_interval');
-    return stored ? parseInt(stored) : 1000;
+    return stored ? parseInt(stored) : 5000;
   }
-  return 1000;
+  return 5000;
 };
 const CAPTURE_INTERVAL_MS = getStoredInterval();
 

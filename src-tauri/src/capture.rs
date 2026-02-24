@@ -15,7 +15,7 @@ use chrono::Local;
 pub fn check_screen_permission() -> bool {
     // Try to take a test screenshot - if it fails, likely no permission
     let temp_path = std::env::temp_dir().join("contextbridge_permission_test.png");
-    let output = Command::new("screencapture")
+    let output = Command::new("/usr/sbin/screencapture")
         .args(["-x", "-C", &temp_path.to_string_lossy()])
         .output();
     
@@ -47,7 +47,7 @@ pub fn take_screenshot() -> Result<PathBuf, String> {
     let path_str = path.to_string_lossy().to_string();
     
     // -x = no sound, -C = capture cursor
-    let output = Command::new("screencapture")
+    let output = Command::new("/usr/sbin/screencapture")
         .args(["-x", "-C", &path_str])
         .output()
         .map_err(|e| format!("Screenshot failed: {}", e))?;

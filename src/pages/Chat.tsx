@@ -3,7 +3,7 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, Bot, User, Loader2, Trash2 } from 'lucide-react';
-import { searchMemories, type Memory } from '../lib/api';
+import { searchMemories, getAllMemories, type Memory } from '../lib/api';
 
 interface Message {
   id: string;
@@ -22,7 +22,7 @@ async function queryGemini(prompt: string, context: string): Promise<string> {
   
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,7 +80,7 @@ export default function Chat() {
   
   // Check context availability
   useEffect(() => {
-    searchMemories('', 100).then(memories => {
+    getAllMemories(100).then(memories => {
       setContextCount(memories.length);
     }).catch(console.error);
   }, []);
@@ -108,16 +108,21 @@ export default function Chat() {
     setIsLoading(true);
     
     try {
-      // Search memories for relevant context
-      const relevantMemories = await searchMemories(input, 20);
+      // Get recent memories (let AI figure out relevance)
+      const recentMemories = await getAllMemories(50);
       
-      // Build context from memories
-      const context = relevantMemories
-        .map((m: Memory) => `[${m.timestamp}] ${m.source_app || 'Unknown'}: ${m.content}`)
+      // Build context from memories - focus on app names and clean content
+      const context = recentMemories
+        .map((m: Memory) => {
+          // Extract just the useful parts - app name and first line of content
+          const appName = m.source_app || 'Unknown';
+          const contentPreview = m.content.split('\n')[0].substring(0, 200);
+          return `[${m.timestamp}] ${appName}: ${contentPreview}`;
+        })
         .join('\n');
       
       // Query Gemini
-      const response = await queryGemini(input, context || 'No relevant memories found.');
+      const response = await queryGemini(input, context || 'No memories captured yet.');
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
