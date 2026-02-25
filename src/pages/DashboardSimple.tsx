@@ -1,38 +1,19 @@
 /**
- * Dashboard — Clean, Simple, One Toggle
+ * Dashboard — Feels like AI watching, not screenshots
+ * Minimal feedback, smooth experience
  */
 import { useState, useEffect } from 'react';
-import { Power, Brain, Zap, Clock, Eye, FileText, AlertTriangle, CheckCircle, HardDrive } from 'lucide-react';
-import { useCaptureContext, type ActivityEvent } from '../lib/captureContext';
-import { getMemoryStats, getAllMemories, checkCapturePermission, checkTesseractInstalled, rapidCaptureWithOcr, formatBytes, type MemoryStats, type Memory } from '../lib/api';
-
-// Calculate top apps from recent memories
-function getTopApps(memories: Memory[]): { app: string; count: number }[] {
-  const appCounts: Record<string, number> = {};
-  memories.forEach(m => {
-    const app = m.source_app || 'Unknown';
-    appCounts[app] = (appCounts[app] || 0) + 1;
-  });
-  return Object.entries(appCounts)
-    .map(([app, count]) => ({ app, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
-}
+import { Power, Brain, Zap, Eye, AlertTriangle, CheckCircle, HardDrive, Activity } from 'lucide-react';
+import { useCaptureContext } from '../lib/captureContext';
+import { getMemoryStats, getAllMemories, checkCapturePermission, checkTesseractInstalled, formatBytes, type MemoryStats, type Memory } from '../lib/api';
 
 export default function Dashboard() {
   const { isActive, captureCount, events, isCapturing, toggleCapture } = useCaptureContext();
   const [stats, setStats] = useState<MemoryStats | null>(null);
-  const [lastCapture, setLastCapture] = useState<Memory | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [hasTesseract, setHasTesseract] = useState<boolean | null>(null);
-  const [showSaveToast, setShowSaveToast] = useState(false);
-  const [testingCapture, setTestingCapture] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
-  const [topApps, setTopApps] = useState<{ app: string; count: number }[]>([]);
-  const [sessionStart] = useState(() => Date.now());
   const [toggling, setToggling] = useState(false);
-  const [expandedCapture, setExpandedCapture] = useState(false);
-  const captureInterval = parseInt(localStorage.getItem('capture_interval') || '1000');
+  const [recentApps, setRecentApps] = useState<string[]>([]);
 
   const handleToggle = async () => {
     setToggling(true);
@@ -43,13 +24,13 @@ export default function Dashboard() {
     }
   };
 
-  // Check permission and tesseract on mount
+  // Check permissions on mount
   useEffect(() => {
     checkCapturePermission().then(setHasPermission).catch(() => setHasPermission(false));
     checkTesseractInstalled().then(setHasTesseract).catch(() => setHasTesseract(false));
   }, []);
 
-  // Keyboard shortcut: Cmd+Shift+C to toggle capture
+  // Keyboard shortcut
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
@@ -61,341 +42,224 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleCapture]);
 
-  // Test capture function
-  const handleTestCapture = async () => {
-    setTestingCapture(true);
-    setTestResult(null);
-    try {
-      const result = await rapidCaptureWithOcr();
-      if (result.success && result.changed) {
-        setTestResult(`✅ OCR captured ${result.summary.length > 50 ? result.summary.slice(0, 50) + '...' : result.summary}`);
-      } else if (result.success) {
-        setTestResult('⚡ No change detected (same as last capture)');
-      } else {
-        setTestResult(`❌ ${result.error || 'Unknown error'}`);
-      }
-    } catch (e) {
-      setTestResult(`❌ Error: ${e}`);
-    } finally {
-      setTestingCapture(false);
-      setTimeout(() => setTestResult(null), 5000);
-    }
-  };
-
-  // Fetch stats and last capture
+  // Fetch stats quietly
   useEffect(() => {
-    const fetch = async () => {
+    const fetchStats = async () => {
       try {
         setStats(await getMemoryStats());
-        const memories = await getAllMemories(20);
-        if (memories.length > 0) {
-          setLastCapture(memories[0]);
-          setTopApps(getTopApps(memories));
-        }
+        const memories = await getAllMemories(10);
+        const apps = [...new Set(memories.map(m => m.source_app).filter(Boolean))].slice(0, 4);
+        setRecentApps(apps as string[]);
       } catch (e) {
         console.error(e);
       }
     };
-    fetch();
-    const interval = setInterval(fetch, 3000);
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // Refresh when events change + show toast
+  // Refresh stats when events change (but quietly, no toasts)
   useEffect(() => {
     if (events.length > 0) {
       getMemoryStats().then(setStats).catch(console.error);
-      getAllMemories(1).then(m => {
-        if (m.length > 0) setLastCapture(m[0]);
-      }).catch(console.error);
-      
-      // Show save toast if latest event was saved
-      if (events[0]?.saved) {
-        setShowSaveToast(true);
-        setTimeout(() => setShowSaveToast(false), 1500);
-      }
     }
   }, [events.length]);
 
-  return (
-    <div className="h-full flex flex-col bg-[#09090b] p-6 overflow-hidden relative">
-      {/* Save Toast */}
-      {showSaveToast && (
-        <div className="absolute top-4 right-4 bg-emerald-500/20 border border-emerald-500/30 rounded-lg px-4 py-2 flex items-center gap-2 animate-pulse z-50">
-          <CheckCircle size={16} className="text-emerald-400" />
-          <span className="text-sm text-emerald-400">Memory saved</span>
-        </div>
-      )}
+  const systemReady = hasPermission === true && hasTesseract === true;
+  const needsSetup = hasPermission === false || hasTesseract === false;
 
-      {/* Permission Warning */}
-      {hasPermission === false && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
+  return (
+    <div className="h-full flex flex-col bg-[#09090b] p-6 overflow-hidden">
+      
+      {/* Setup Warning - Only show if needed */}
+      {needsSetup && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
           <AlertTriangle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-amber-400">Screen Recording Permission Required</p>
+            <p className="text-sm font-medium text-amber-400">Setup Required</p>
             <p className="text-xs text-zinc-400 mt-1">
-              Go to System Settings → Privacy & Security → Screen Recording → Enable for ContextBridge
+              {hasPermission === false && 'Enable Screen Recording in System Settings → Privacy & Security'}
+              {hasPermission !== false && hasTesseract === false && 'Install OCR: brew install tesseract'}
             </p>
           </div>
-        </div>
-      )}
-
-      {/* Tesseract Warning */}
-      {hasTesseract === false && (
-        <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
-          <AlertTriangle size={20} className="text-rose-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-rose-400">Tesseract OCR Not Installed</p>
-            <p className="text-xs text-zinc-400 mt-1">
-              Run: <code className="bg-zinc-800 px-1 rounded">brew install tesseract</code>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* System Ready */}
-      {hasPermission === true && hasTesseract === true && !isActive && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 mb-4 flex items-center gap-2">
-          <CheckCircle size={16} className="text-emerald-400" />
-          <span className="text-sm text-emerald-400">System ready — Click toggle to start capturing</span>
-        </div>
-      )}
-
-      {/* Test Result */}
-      {testResult && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 mb-4 text-sm text-zinc-300">
-          {testResult}
         </div>
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          THE BIG TOGGLE
+          THE BIG TOGGLE - Clean & Simple
           ═══════════════════════════════════════════════════════════════════ */}
       <button
         onClick={handleToggle}
-        disabled={toggling}
-        title={isActive ? 'Click to pause capture (⌘⇧C)' : 'Click to start capture (⌘⇧C)'}
-        className={`w-full flex items-center justify-between p-6 rounded-2xl transition-all duration-300 mb-6 disabled:opacity-70 relative overflow-hidden ${
+        disabled={toggling || needsSetup}
+        className={`w-full flex items-center justify-between p-8 rounded-2xl transition-all duration-500 mb-8 disabled:opacity-50 ${
           isActive
-            ? 'bg-emerald-500/10 border-2 border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.15)]'
-            : 'bg-zinc-900 border-2 border-zinc-800 hover:border-zinc-700 hover:shadow-lg'
+            ? 'bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border-2 border-emerald-500/30'
+            : 'bg-zinc-900/50 border-2 border-zinc-800 hover:border-zinc-700'
         }`}
       >
-        {/* Capture pulse animation */}
-        {isActive && isCapturing && (
-          <div className="absolute inset-0 bg-emerald-500/5 animate-pulse pointer-events-none" />
-        )}
-        <div className="flex items-center gap-4">
-          {/* Pulsing indicator */}
+        <div className="flex items-center gap-5">
+          {/* Status indicator - subtle breathing animation when active */}
           <div className="relative">
-            <div className={`w-5 h-5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+            <div className={`w-4 h-4 rounded-full transition-colors duration-500 ${
+              isActive ? 'bg-emerald-400' : 'bg-zinc-600'
+            }`} />
             {isActive && (
-              <div className="absolute inset-0 w-5 h-5 rounded-full bg-emerald-400 animate-ping opacity-50" />
+              <div className="absolute inset-0 w-4 h-4 rounded-full bg-emerald-400/50 animate-[ping_2s_ease-in-out_infinite]" />
             )}
           </div>
           
           <div className="text-left">
-            <h1 className={`text-2xl font-bold ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`}>
-              {isActive ? 'CAPTURING' : 'PAUSED'}
+            <h1 className={`text-2xl font-semibold transition-colors duration-500 ${
+              isActive ? 'text-emerald-400' : 'text-zinc-500'
+            }`}>
+              {isActive ? 'Watching' : 'Paused'}
             </h1>
-            <p className="text-sm text-zinc-500 mt-1 flex items-center gap-3">
+            <p className="text-sm text-zinc-500 mt-1">
               {isActive 
-                ? `${captureCount} captures · OCR every ${captureInterval < 1000 ? captureInterval + 'ms' : (captureInterval/1000) + 's'}`
-                : (
-                  <>
-                    Click to start · <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-xs font-mono">⌘⇧C</kbd>
-                  </>
-                )}
-              {!isActive && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleTestCapture(); }}
-                  disabled={testingCapture}
-                  className="text-xs text-violet-400 hover:text-violet-300 underline"
-                >
-                  {testingCapture ? 'Testing...' : 'Test OCR'}
-                </button>
-              )}
+                ? 'AI is learning from your screen'
+                : 'Click to start watching'}
             </p>
           </div>
         </div>
 
-        <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${
+        <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
           isActive ? 'bg-emerald-500/20' : 'bg-zinc-800'
         }`}>
-          {isCapturing ? (
-            <div className="w-8 h-8 border-3 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
-          ) : (
-            <Power size={32} className={isActive ? 'text-emerald-400' : 'text-zinc-500'} />
-          )}
+          <Power size={24} className={`transition-colors duration-500 ${
+            isActive ? 'text-emerald-400' : 'text-zinc-500'
+          }`} />
         </div>
       </button>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          QUICK STATS
+          STATS - Clean cards
           ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 hover:border-zinc-700 transition-colors">
-          <div className="flex items-center gap-2 text-zinc-500 mb-2">
-            <Brain size={16} />
-            <span className="text-xs uppercase">Total</span>
-          </div>
-          <p className="text-2xl font-bold text-white">{stats?.total_memories ?? 0}</p>
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <StatCard 
+          icon={Brain} 
+          label="Memories" 
+          value={stats?.total_memories ?? 0}
+          color="violet"
+        />
+        <StatCard 
+          icon={Zap} 
+          label="Today" 
+          value={stats?.memories_today ?? 0}
+          color="amber"
+        />
+        <StatCard 
+          icon={Eye} 
+          label="This Session" 
+          value={captureCount}
+          color="emerald"
+          pulse={isActive && isCapturing}
+        />
+        <StatCard 
+          icon={HardDrive} 
+          label="Storage" 
+          value={stats ? formatBytes(stats.storage_bytes) : '0 B'}
+          color="cyan"
+          isText
+        />
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          ACTIVITY - Minimal, shows app context not screenshot details
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-hidden">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity size={14} className={isActive ? 'text-emerald-400' : 'text-zinc-600'} />
+          <h2 className="text-sm font-medium text-zinc-400">Recent Activity</h2>
+          {isActive && (
+            <span className="text-xs text-emerald-400/60 ml-auto">Live</span>
+          )}
         </div>
         
-        <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 hover:border-zinc-700 transition-colors">
-          <div className="flex items-center gap-2 text-zinc-500 mb-2">
-            <Zap size={16} />
-            <span className="text-xs uppercase">Today</span>
-          </div>
-          <p className="text-2xl font-bold text-amber-400">{stats?.memories_today ?? 0}</p>
-        </div>
-        
-        <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 hover:border-zinc-700 transition-colors">
-          <div className="flex items-center gap-2 text-zinc-500 mb-2">
-            <Eye size={16} />
-            <span className="text-xs uppercase">Session</span>
-          </div>
-          <p className="text-2xl font-bold text-violet-400">{captureCount}</p>
-          {isActive && captureCount > 0 && (
-            <p className="text-xs text-zinc-500 mt-1">
-              ~{Math.round(captureCount / Math.max(1, (Date.now() - sessionStart) / 60000))}/min
+        {events.length === 0 && (stats?.total_memories ?? 0) === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 text-center">
+            <Brain size={40} className="text-zinc-800 mb-4" />
+            <p className="text-zinc-500 text-sm">
+              {isActive ? 'Learning your workflow...' : 'Start watching to build memory'}
             </p>
-          )}
-        </div>
-
-        <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 hover:border-zinc-700 transition-colors">
-          <div className="flex items-center gap-2 text-zinc-500 mb-2">
-            <HardDrive size={16} />
-            <span className="text-xs uppercase">Storage</span>
           </div>
-          <p className="text-2xl font-bold text-cyan-400">{stats ? formatBytes(stats.storage_bytes) : '0 B'}</p>
-        </div>
+        ) : (
+          <div className="space-y-2 overflow-y-auto max-h-64 pr-2">
+            {/* Show recent app switches, not every capture */}
+            {events.slice(0, 10).map((event, i) => (
+              <div 
+                key={event.id}
+                className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50"
+                style={{ opacity: 1 - (i * 0.08) }}
+              >
+                <div className={`w-2 h-2 rounded-full ${event.saved ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                <span className="text-sm text-zinc-400 truncate flex-1">
+                  {event.app || 'Screen activity'}
+                </span>
+                <span className="text-xs text-zinc-600">
+                  {event.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Recent apps - subtle context */}
+        {recentApps.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-zinc-800/50">
+            <p className="text-xs text-zinc-600 mb-2">Context from</p>
+            <div className="flex flex-wrap gap-2">
+              {recentApps.map((app, i) => (
+                <span key={i} className="px-2 py-1 rounded bg-zinc-800/50 text-xs text-zinc-500">
+                  {app}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Top Apps */}
-      {topApps.length > 0 && (
-        <div className="flex items-center gap-2 mb-4 flex-wrap pb-4 border-b border-zinc-800/50">
-          <span className="text-xs text-zinc-500">Recent apps:</span>
-          {topApps.map((item, i) => (
-            <span key={i} className="px-2 py-1 rounded-full bg-zinc-800 text-xs text-zinc-300">
-              {item.app} ({item.count})
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          LAST CAPTURE PREVIEW
-          ═══════════════════════════════════════════════════════════════════ */}
-      {lastCapture && (
-        <div 
-          className="bg-zinc-900 rounded-xl p-4 border border-zinc-800 mb-6 cursor-pointer hover:border-zinc-700 transition-colors"
-          onClick={() => setExpandedCapture(!expandedCapture)}
-        >
-          <div className="flex items-center gap-2 text-zinc-500 mb-3">
-            <FileText size={16} />
-            <span className="text-xs uppercase">Last Capture</span>
-            <span className="text-xs text-emerald-400 ml-2">
-              {new Date(lastCapture.timestamp).toLocaleTimeString()}
-            </span>
-            <span className="text-xs text-zinc-600 ml-auto">
-              {lastCapture.source_app || 'Unknown'} · {lastCapture.content.length.toLocaleString()} chars
-              <span className="text-violet-400 ml-2">{expandedCapture ? '▼' : '▶'}</span>
-            </span>
-          </div>
-          <pre className={`text-xs text-zinc-400 font-mono whitespace-pre-wrap overflow-hidden transition-all ${
-            expandedCapture ? 'max-h-96' : 'line-clamp-4'
-          }`}>
-            {lastCapture.content}
-          </pre>
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          LIVE ACTIVITY FEED
-          ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex items-center gap-2 mb-3">
-          <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-          <h2 className="text-sm font-medium text-zinc-400 uppercase">Live Activity</h2>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-          {events.length === 0 && (stats?.total_memories ?? 0) === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <Brain size={48} className="text-zinc-700 mb-4" />
-              <h3 className="text-lg font-medium text-zinc-400 mb-2">Welcome to ContextBridge!</h3>
-              <p className="text-sm text-zinc-500 mb-4">
-                {isActive 
-                  ? 'Taking screenshots and running OCR... first results coming soon!' 
-                  : 'Click the toggle above to start capturing your screen context.'}
-              </p>
-              <ul className="text-xs text-zinc-600 space-y-1 text-left">
-                <li>✓ Screenshots every {captureInterval < 1000 ? captureInterval + 'ms' : (captureInterval/1000) + 's'}</li>
-                <li>✓ OCR extracts all visible text</li>
-                <li>✓ Ask Gemini about your day in Chat</li>
-                <li>✓ Browse all memories in Memory page</li>
-              </ul>
-            </div>
-          ) : events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <Brain size={48} className="text-zinc-700 mb-4" />
-              <p className="text-zinc-500">
-                {isActive ? 'Capturing screen content...' : 'Turn on capture to start'}
-              </p>
-            </div>
-          ) : (
-            events.slice(0, 30).map((event) => (
-              <ActivityItem key={event.id} event={event} />
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex-shrink-0 px-6 py-3 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-600">
-        <span>ContextBridge v0.1.0-alpha</span>
-        <span>⌘⇧C to toggle</span>
+      {/* Footer - keyboard hint */}
+      <div className="flex-shrink-0 pt-4 border-t border-zinc-800/30 flex items-center justify-between text-xs text-zinc-600">
+        <span>ContextBridge</span>
+        <kbd className="px-2 py-0.5 rounded bg-zinc-800/50 font-mono">⌘⇧C</kbd>
       </div>
     </div>
   );
 }
 
-function ActivityItem({ event }: { event: ActivityEvent }) {
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Clean stat card component
+function StatCard({ 
+  icon: Icon, 
+  label, 
+  value, 
+  color,
+  pulse = false,
+  isText = false
+}: { 
+  icon: any; 
+  label: string; 
+  value: number | string;
+  color: 'violet' | 'amber' | 'emerald' | 'cyan';
+  pulse?: boolean;
+  isText?: boolean;
+}) {
+  const colors = {
+    violet: 'text-violet-400',
+    amber: 'text-amber-400',
+    emerald: 'text-emerald-400',
+    cyan: 'text-cyan-400',
   };
 
   return (
-    <div className={`flex items-start gap-3 p-3 rounded-lg border transition-all animate-fade-in-up ${
-      event.saved 
-        ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10' 
-        : 'bg-zinc-900/50 border-zinc-800/50 hover:bg-zinc-900'
-    }`}>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-        event.saved ? 'bg-emerald-500/20' : 'bg-violet-500/10'
-      }`}>
-        {event.saved ? (
-          <Eye size={14} className="text-emerald-400" />
-        ) : (
-          <Brain size={14} className="text-violet-400" />
-        )}
+    <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
+      <div className="flex items-center gap-2 text-zinc-500 mb-2">
+        <Icon size={14} className={pulse ? 'animate-pulse' : ''} />
+        <span className="text-xs">{label}</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm truncate ${event.saved ? 'text-emerald-300' : 'text-zinc-300'}`}>
-          {event.summary}
-        </p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {event.app && (
-            <span className="text-xs text-zinc-600 px-1.5 py-0.5 rounded bg-zinc-800/50">{event.app}</span>
-          )}
-          <Clock size={10} className="text-zinc-600" />
-          <span className="text-xs text-zinc-600">{formatTime(event.timestamp)}</span>
-          {event.saved && (
-            <span className="text-xs text-emerald-500 font-medium">✓ OCR</span>
-          )}
-        </div>
-      </div>
+      <p className={`text-xl font-semibold ${colors[color]} ${isText ? 'text-lg' : ''}`}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </p>
     </div>
   );
 }

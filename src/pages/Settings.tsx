@@ -1,57 +1,115 @@
 /**
- * Settings - Premium design with glass morphism
+ * Settings — Simplified for humans
+ * Goal: A 5-year-old could understand this
  */
 import { useState, useEffect } from 'react';
-import { Server, Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle, Settings as SettingsIcon, Copy, Check, Database, Sparkles, Key, Eye, EyeOff, Timer, Play, Shield } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, CheckCircle, Eye, EyeOff, Zap, Shield, HelpCircle, ExternalLink, ChevronDown, ChevronRight, Copy, Check, Server } from 'lucide-react';
 import { deleteAllMemories, getAllMemories, saveMemory, checkCapturePermission, checkTesseractInstalled } from '../lib/api';
 
 export default function Settings() {
+  // Core state
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Settings values
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
   const [keyVisible, setKeyVisible] = useState(false);
   const [captureInterval, setCaptureInterval] = useState(() => {
     const saved = localStorage.getItem('capture_interval');
-    return saved ? parseInt(saved) : 1000;
+    return saved ? parseInt(saved) : 3000;
   });
-  const [autoStart, setAutoStart] = useState(() => {
-    return localStorage.getItem('auto_start_capture') === 'true';
-  });
-
-  // System health checks
+  const [autoStart, setAutoStart] = useState(() => localStorage.getItem('auto_start_capture') === 'true');
+  
+  // System health
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [hasTesseract, setHasTesseract] = useState<boolean | null>(null);
+  
+  // Advanced section
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     checkCapturePermission().then(setHasPermission).catch(() => setHasPermission(false));
     checkTesseractInstalled().then(setHasTesseract).catch(() => setHasTesseract(false));
   }, []);
 
-  const handleSaveGeminiKey = () => {
-    if (geminiKey.trim()) {
-      localStorage.setItem('gemini_api_key', geminiKey.trim());
-      setMessage({ type: 'success', text: 'Gemini API key saved' });
-    } else {
-      localStorage.removeItem('gemini_api_key');
-      setMessage({ type: 'success', text: 'Gemini API key removed' });
-    }
+  const showMsg = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text });
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleSaveCaptureInterval = () => {
-    localStorage.setItem('capture_interval', captureInterval.toString());
-    setMessage({ type: 'success', text: `Capture interval set to ${captureInterval}ms. Restart app to apply.` });
-    setTimeout(() => setMessage(null), 3000);
+  const handleSaveGeminiKey = () => {
+    if (geminiKey.trim()) {
+      localStorage.setItem('gemini_api_key', geminiKey.trim());
+      showMsg('success', 'API key saved');
+    } else {
+      localStorage.removeItem('gemini_api_key');
+      showMsg('success', 'API key removed');
+    }
+  };
+
+  const handleIntervalChange = (value: number) => {
+    setCaptureInterval(value);
+    localStorage.setItem('capture_interval', value.toString());
   };
 
   const handleToggleAutoStart = () => {
     const newValue = !autoStart;
     setAutoStart(newValue);
     localStorage.setItem('auto_start_capture', newValue.toString());
-    setMessage({ type: 'success', text: newValue ? 'Auto-start enabled' : 'Auto-start disabled' });
-    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleExport = async () => {
+    try {
+      const memories = await getAllMemories(10000);
+      const blob = new Blob([JSON.stringify(memories, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contextbridge-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showMsg('success', `Exported ${memories.length} memories`);
+    } catch (err) {
+      showMsg('error', `Export failed: ${err}`);
+    }
+  };
+
+  const handleImport = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const memories = JSON.parse(text);
+        let imported = 0;
+        for (const m of memories) {
+          await saveMemory(m.content, m.tags || [], m.source || 'manual', m.source_app);
+          imported++;
+        }
+        showMsg('success', `Imported ${imported} memories`);
+      } catch (err) {
+        showMsg('error', `Import failed: ${err}`);
+      }
+    };
+    input.click();
+  };
+
+  const handleDeleteAll = async () => {
+    setDeleting(true);
+    try {
+      const count = await deleteAllMemories();
+      showMsg('success', `Deleted ${count} memories`);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      showMsg('error', `Failed to delete: ${err}`);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const mcpConfig = `"contextbridge": {
@@ -65,475 +123,280 @@ export default function Settings() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDeleteAll = async () => {
-    setDeleting(true);
-    try {
-      const count = await deleteAllMemories();
-      setMessage({ type: 'success', text: `Deleted ${count} memories` });
-      setShowDeleteConfirm(false);
-    } catch (err) {
-      setMessage({ type: 'error', text: `Failed to delete: ${err}` });
-    } finally {
-      setDeleting(false);
-      setTimeout(() => setMessage(null), 3000);
-    }
-  };
-
-  const handleExport = async () => {
-    try {
-      const memories = await getAllMemories(10000);
-      const blob = new Blob([JSON.stringify(memories, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `contextbridge-export-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setMessage({ type: 'success', text: `Exported ${memories.length} memories` });
-    } catch (err) {
-      setMessage({ type: 'error', text: `Export failed: ${err}` });
-    }
-    setTimeout(() => setMessage(null), 3000);
-  };
-
-  const handleImport = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      
-      try {
-        const text = await file.text();
-        const memories = JSON.parse(text);
-        let imported = 0;
-        
-        for (const m of memories) {
-          await saveMemory(
-            m.content,
-            m.tags || [],
-            m.source || 'manual',
-            m.source_app
-          );
-          imported++;
-        }
-        
-        setMessage({ type: 'success', text: `Imported ${imported} memories` });
-      } catch (err) {
-        setMessage({ type: 'error', text: `Import failed: ${err}` });
-      }
-      setTimeout(() => setMessage(null), 3000);
-    };
-    input.click();
-  };
+  const systemReady = hasPermission === true && hasTesseract === true;
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b] relative">
-      {/* Ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2/3 h-32 bg-gradient-to-b from-violet-500/[0.05] to-transparent pointer-events-none" />
-      
-      {/* Header */}
-      <header className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/[0.04] relative">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-white/[0.05] to-white/[0.02] flex items-center justify-center ring-1 ring-white/[0.06]">
-            <SettingsIcon size={18} className="text-zinc-400" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-white tracking-tight">Settings</h1>
-            <p className="text-[12px] text-zinc-500">Configure ContextBridge</p>
-          </div>
-        </div>
+    <div className="h-full flex flex-col bg-[#09090b]">
+      {/* Simple Header */}
+      <header className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/[0.04]">
+        <h1 className="text-xl font-semibold text-white">Settings</h1>
+        <p className="text-sm text-zinc-500 mt-1">Keep it simple</p>
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 relative">
-        <div className="max-w-2xl space-y-6">
-          {/* Status Message */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="max-w-lg space-y-6">
+          
+          {/* Toast Message */}
           {message && (
-            <div className={`flex items-center gap-3 p-4 rounded-xl border animate-fade-in-up ${
+            <div className={`flex items-center gap-2 p-3 rounded-xl animate-fade-in ${
               message.type === 'success' 
-                ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400'
-                : 'bg-rose-500/5 border-rose-500/20 text-rose-400'
+                ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
             }`}>
               <CheckCircle size={16} />
-              <span className="text-[13px]">{message.text}</span>
+              <span className="text-sm">{message.text}</span>
             </div>
           )}
 
-          {/* System Health */}
-          <section className="animate-fade-in-up">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              System Health
-            </h2>
-            <div className="p-4 rounded-2xl bg-[#111113] border border-white/[0.04]">
-              <div className="grid grid-cols-2 gap-4">
-                <div className={`flex items-center gap-3 p-3 rounded-xl ${
-                  hasPermission === true 
-                    ? 'bg-emerald-500/5 border border-emerald-500/20' 
-                    : hasPermission === false 
-                      ? 'bg-rose-500/5 border border-rose-500/20' 
-                      : 'bg-zinc-800/50 border border-zinc-700/50'
-                }`}>
-                  <Shield size={18} className={
-                    hasPermission === true ? 'text-emerald-400' : hasPermission === false ? 'text-rose-400' : 'text-zinc-500'
-                  } />
-                  <div>
-                    <p className="text-sm font-medium text-white">Screen Recording</p>
-                    <p className={`text-xs ${
-                      hasPermission === true ? 'text-emerald-400' : hasPermission === false ? 'text-rose-400' : 'text-zinc-500'
-                    }`}>
-                      {hasPermission === true ? 'Enabled ✓' : hasPermission === false ? 'Not enabled' : 'Checking...'}
-                    </p>
-                  </div>
-                </div>
-                <div className={`flex items-center gap-3 p-3 rounded-xl ${
-                  hasTesseract === true 
-                    ? 'bg-emerald-500/5 border border-emerald-500/20' 
-                    : hasTesseract === false 
-                      ? 'bg-rose-500/5 border border-rose-500/20' 
-                      : 'bg-zinc-800/50 border border-zinc-700/50'
-                }`}>
-                  <Eye size={18} className={
-                    hasTesseract === true ? 'text-emerald-400' : hasTesseract === false ? 'text-rose-400' : 'text-zinc-500'
-                  } />
-                  <div>
-                    <p className="text-sm font-medium text-white">Tesseract OCR</p>
-                    <p className={`text-xs ${
-                      hasTesseract === true ? 'text-emerald-400' : hasTesseract === false ? 'text-rose-400' : 'text-zinc-500'
-                    }`}>
-                      {hasTesseract === true ? 'Installed ✓' : hasTesseract === false ? 'Not installed' : 'Checking...'}
-                    </p>
-                  </div>
-                </div>
+          {/* ═══════════════════════════════════════════════════════════════
+              SYSTEM STATUS - Just show if ready or not
+              ═══════════════════════════════════════════════════════════════ */}
+          <section>
+            <div className={`flex items-center gap-3 p-4 rounded-xl border ${
+              systemReady 
+                ? 'bg-emerald-500/5 border-emerald-500/20' 
+                : 'bg-amber-500/5 border-amber-500/20'
+            }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                systemReady ? 'bg-emerald-500/20' : 'bg-amber-500/20'
+              }`}>
+                {systemReady ? (
+                  <CheckCircle size={20} className="text-emerald-400" />
+                ) : (
+                  <AlertTriangle size={20} className="text-amber-400" />
+                )}
               </div>
-              {hasTesseract === false && (
-                <p className="text-xs text-zinc-500 mt-3">
-                  Install with: <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-violet-400">brew install tesseract</code>
+              <div className="flex-1">
+                <p className={`font-medium ${systemReady ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {systemReady ? 'System Ready' : 'Setup Needed'}
                 </p>
-              )}
+                <p className="text-xs text-zinc-500">
+                  {systemReady 
+                    ? 'Screen capture & OCR working' 
+                    : hasPermission === false 
+                      ? 'Enable Screen Recording in System Settings'
+                      : 'Run: brew install tesseract'}
+                </p>
+              </div>
             </div>
           </section>
 
-          {/* MCP Server Status */}
-          <section className="animate-fade-in-up">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              AI Integration
+          {/* ═══════════════════════════════════════════════════════════════
+              CAPTURE SETTINGS - Simple slider
+              ═══════════════════════════════════════════════════════════════ */}
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+              <Zap size={14} />
+              Capture
             </h2>
-            <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04] relative overflow-hidden">
-              {/* Subtle glow */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl pointer-events-none" />
-              
-              <div className="flex items-center justify-between mb-4 relative">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-1 ring-emerald-500/20">
-                    <Server size={18} className="text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-medium text-white">MCP Server</p>
-                    <p className="text-[11px] text-zinc-500">Model Context Protocol</p>
-                  </div>
+            
+            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+              {/* Speed slider */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-zinc-300">Speed</span>
+                  <span className="text-sm font-mono text-violet-400">
+                    {captureInterval < 1000 ? `${captureInterval}ms` : `${captureInterval/1000}s`}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)] animate-pulse-soft" />
-                  <span className="text-[11px] font-medium text-emerald-400">Ready</span>
+                <input
+                  type="range"
+                  min="1000"
+                  max="10000"
+                  step="1000"
+                  value={captureInterval}
+                  onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
+                  className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                />
+                <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+                  <span>Faster</span>
+                  <span>Slower (saves battery)</span>
                 </div>
               </div>
-              
-              <p className="text-[12px] text-zinc-500 mb-3 relative">
-                Add this to your Claude Desktop config:
-              </p>
-              
-              <div className="relative group">
-                <pre className="p-4 rounded-xl bg-[#0a0a0c] border border-white/[0.04] text-[12px] text-violet-300 font-mono overflow-x-auto">
-                  {mcpConfig}
-                </pre>
+
+              {/* Auto-start toggle */}
+              <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
+                <div>
+                  <p className="text-sm text-zinc-300">Start automatically</p>
+                  <p className="text-xs text-zinc-600">Begin capturing when app opens</p>
+                </div>
                 <button
-                  onClick={handleCopyConfig}
-                  className="absolute top-3 right-3 p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-all"
+                  onClick={handleToggleAutoStart}
+                  className={`w-12 h-7 rounded-full transition-colors relative ${
+                    autoStart ? 'bg-violet-500' : 'bg-zinc-700'
+                  }`}
                 >
-                  {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    autoStart ? 'left-6' : 'left-1'
+                  }`} />
                 </button>
               </div>
             </div>
           </section>
 
-          {/* Gemini API Key */}
-          <section className="animate-fade-in-up stagger-1">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Chat (Gemini)
+          {/* ═══════════════════════════════════════════════════════════════
+              AI CHAT - Just the API key
+              ═══════════════════════════════════════════════════════════════ */}
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+              <Shield size={14} />
+              AI Chat
             </h2>
-            <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04] relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 blur-3xl pointer-events-none" />
-              
-              <div className="flex items-center gap-3 mb-4 relative">
-                <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center ring-1 ring-violet-500/20">
-                  <Key size={18} className="text-violet-400" />
-                </div>
-                <div>
-                  <p className="text-[14px] font-medium text-white">Gemini API Key</p>
-                  <p className="text-[11px] text-zinc-500">Powers the Chat feature</p>
-                </div>
-              </div>
-              
-              <div className="space-y-3 relative">
-                <div className="relative">
+            
+            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+              <p className="text-sm text-zinc-300 mb-3">Gemini API Key</p>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
                   <input
                     type={keyVisible ? 'text' : 'password'}
                     value={geminiKey}
                     onChange={(e) => setGeminiKey(e.target.value)}
                     placeholder="AIza..."
-                    className="w-full px-4 py-3 pr-20 rounded-xl bg-[#0a0a0c] border border-white/[0.04] text-[13px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500/30"
+                    className="w-full px-3 py-2 pr-10 rounded-lg bg-zinc-800 border border-zinc-700 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500/50"
                   />
                   <button
                     onClick={() => setKeyVisible(!keyVisible)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-zinc-500 hover:text-zinc-300"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300"
                   >
                     {keyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <a 
-                    href="https://aistudio.google.com/app/apikey" 
-                    target="_blank" 
-                    rel="noopener"
-                    className="text-[11px] text-violet-400 hover:text-violet-300 flex items-center gap-1"
-                  >
-                    Get free API key <ExternalLink size={10} />
-                  </a>
-                  <button
-                    onClick={handleSaveGeminiKey}
-                    className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-[12px] font-medium text-white transition-colors"
-                  >
-                    Save Key
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Capture Settings */}
-          <section className="animate-fade-in-up stagger-1">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Capture
-            </h2>
-            <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04] relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl pointer-events-none" />
-              
-              <div className="flex items-center gap-3 mb-4 relative">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-1 ring-emerald-500/20">
-                  <Timer size={18} className="text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-[14px] font-medium text-white">Capture Interval</p>
-                  <p className="text-[11px] text-zinc-500">How often to capture screen (OCR)</p>
-                </div>
-              </div>
-              
-              <div className="space-y-3 relative">
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min="500"
-                    max="5000"
-                    step="500"
-                    value={captureInterval}
-                    onChange={(e) => setCaptureInterval(parseInt(e.target.value))}
-                    className="flex-1 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                  />
-                  <span className="text-lg font-mono text-white w-20 text-right">
-                    {captureInterval < 1000 ? `${captureInterval}ms` : `${captureInterval/1000}s`}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>Faster (more captures)</span>
-                  <span>Slower (less CPU)</span>
-                </div>
                 <button
-                  onClick={handleSaveCaptureInterval}
-                  className="w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-[12px] font-medium text-white transition-colors"
+                  onClick={handleSaveGeminiKey}
+                  className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium text-white transition-colors"
                 >
-                  Save Interval
+                  Save
                 </button>
-                
-                {/* Auto-start toggle */}
-                <div className="flex items-center justify-between pt-3 border-t border-zinc-800 mt-3">
-                  <div className="flex items-center gap-3">
-                    <Play size={16} className="text-zinc-400" />
-                    <div>
-                      <p className="text-[13px] text-white">Auto-start capture</p>
-                      <p className="text-[11px] text-zinc-500">Start capturing when app opens</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleToggleAutoStart}
-                    className={`w-12 h-6 rounded-full transition-colors ${
-                      autoStart ? 'bg-emerald-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                      autoStart ? 'translate-x-6' : 'translate-x-0.5'
-                    }`} />
-                  </button>
-                </div>
               </div>
+              <a 
+                href="https://aistudio.google.com/app/apikey" 
+                target="_blank" 
+                rel="noopener"
+                className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 mt-2"
+              >
+                Get free API key <ExternalLink size={10} />
+              </a>
             </div>
           </section>
 
-          {/* Storage */}
-          <section className="animate-fade-in-up stagger-1">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Storage
-            </h2>
-            <div className="p-5 rounded-2xl bg-[#111113] border border-white/[0.04]">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-white/[0.03] flex items-center justify-center ring-1 ring-white/[0.06]">
-                  <Database size={18} className="text-zinc-400" />
-                </div>
-                <div>
-                  <p className="text-[14px] font-medium text-white">Data Location</p>
-                  <p className="text-[11px] text-zinc-500">Local SQLite database</p>
-                </div>
-              </div>
-              <code className="block w-full px-4 py-3 rounded-xl bg-[#0a0a0c] border border-white/[0.04] text-[12px] text-zinc-400 font-mono">
-                ~/.contextbridge/memories.db
-              </code>
-            </div>
-          </section>
-
-          {/* Data Management */}
-          <section className="animate-fade-in-up stagger-2">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Data Management
-            </h2>
-            <p className="text-[11px] text-zinc-600 mb-3 font-mono">
-              📁 ~/.contextbridge/memories.db
-            </p>
-            <div className="grid grid-cols-2 gap-3">
+          {/* ═══════════════════════════════════════════════════════════════
+              YOUR DATA - Export, Import, Delete
+              ═══════════════════════════════════════════════════════════════ */}
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium text-zinc-400">Your Data</h2>
+            
+            <div className="grid grid-cols-3 gap-3">
               <button 
                 onClick={handleExport}
-                className="group flex items-center justify-center gap-2 p-4 rounded-xl bg-[#111113] border border-white/[0.04] text-[13px] font-medium text-white hover:border-violet-500/30 hover:bg-[#141416] transition-all"
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
               >
-                <Download size={16} className="text-violet-400 group-hover:scale-110 transition-transform" />
-                Export Data
+                <Download size={20} className="text-violet-400" />
+                <span className="text-xs text-zinc-300">Export</span>
               </button>
               <button 
                 onClick={handleImport}
-                className="group flex items-center justify-center gap-2 p-4 rounded-xl bg-[#111113] border border-white/[0.04] text-[13px] font-medium text-white hover:border-violet-500/30 hover:bg-[#141416] transition-all"
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
               >
-                <Upload size={16} className="text-violet-400 group-hover:scale-110 transition-transform" />
-                Import Data
+                <Upload size={20} className="text-violet-400" />
+                <span className="text-xs text-zinc-300">Import</span>
+              </button>
+              <button 
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-rose-500/30 transition-colors"
+              >
+                <Trash2 size={20} className="text-rose-400" />
+                <span className="text-xs text-zinc-300">Delete All</span>
               </button>
             </div>
-          </section>
 
-          {/* Danger Zone */}
-          <section className="animate-fade-in-up stagger-3">
-            <h2 className="text-[11px] font-medium text-rose-400/70 uppercase tracking-wider mb-3 px-1">
-              Danger Zone
-            </h2>
-            <div className="p-5 rounded-2xl bg-rose-500/5 border border-rose-500/20">
-              {!showDeleteConfirm ? (
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="flex items-center gap-2 text-[13px] text-rose-400 hover:text-rose-300 transition-colors"
-                >
-                  <Trash2 size={16} />
-                  Delete All Data
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-rose-400">
-                    <AlertTriangle size={16} />
-                    <p className="text-[13px] font-medium">This action cannot be undone</p>
-                  </div>
-                  <p className="text-[12px] text-zinc-500">
-                    All your memories will be permanently deleted. Make sure you've exported a backup.
-                  </p>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={deleting}
-                      className="px-4 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-[12px] text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={handleDeleteAll}
-                      disabled={deleting}
-                      className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-[12px] text-rose-400 font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50"
-                    >
-                      {deleting ? 'Deleting...' : 'Yes, Delete Everything'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* About */}
-          {/* Keyboard Shortcuts */}
-          <section className="animate-fade-in-up stagger-4">
-            <h2 className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-3 px-1">
-              Keyboard Shortcuts
-            </h2>
-            <div className="p-4 rounded-2xl bg-[#111113] border border-white/[0.04]">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Toggle Capture</span>
-                  <kbd className="px-2 py-1 rounded bg-zinc-800 text-xs font-mono text-zinc-300">⌘⇧C</kbd>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Dashboard</span>
-                  <kbd className="px-2 py-1 rounded bg-zinc-800 text-xs font-mono text-zinc-300">⌘1</kbd>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Chat</span>
-                  <kbd className="px-2 py-1 rounded bg-zinc-800 text-xs font-mono text-zinc-300">⌘2</kbd>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Memory</span>
-                  <kbd className="px-2 py-1 rounded bg-zinc-800 text-xs font-mono text-zinc-300">⌘3</kbd>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Settings</span>
-                  <kbd className="px-2 py-1 rounded bg-zinc-800 text-xs font-mono text-zinc-300">⌘4</kbd>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* About */}
-          <section className="animate-fade-in-up stagger-5">
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-violet-500/[0.05] via-purple-500/[0.03] to-transparent border border-violet-500/10 relative overflow-hidden">
-              {/* Subtle glow */}
-              <div className="absolute top-0 left-0 w-32 h-32 bg-violet-500/10 blur-3xl pointer-events-none" />
-              
-              <div className="flex items-center gap-3 mb-4 relative">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 flex items-center justify-center ring-1 ring-violet-500/20">
-                  <Sparkles size={18} className="text-violet-400" />
-                </div>
-                <div>
-                  <h2 className="text-[14px] font-semibold text-white">About ContextBridge</h2>
-                  <p className="text-[11px] text-zinc-500">v0.1.0-alpha</p>
-                </div>
-              </div>
-              <div className="space-y-2 text-[12px] text-zinc-400 relative">
-                <p>Universal AI Memory — Your context, everywhere</p>
-                <p className="text-[11px] text-zinc-600">Built with Tauri + React + Rust · Rebuilt Feb 2026</p>
-                <div className="flex gap-4 pt-3">
-                  <a 
-                    href="https://github.com/nikonadreau/contextbridge" 
-                    target="_blank" 
-                    rel="noopener" 
-                    className="flex items-center gap-1.5 text-violet-400 hover:text-violet-300 transition-colors"
+            {/* Delete confirmation */}
+            {showDeleteConfirm && (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 animate-fade-in">
+                <p className="text-sm text-rose-400 font-medium mb-2">Delete everything?</p>
+                <p className="text-xs text-zinc-400 mb-3">This cannot be undone. Export a backup first!</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs text-zinc-300 hover:bg-zinc-700"
                   >
-                    GitHub <ExternalLink size={12} />
-                  </a>
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteAll}
+                    disabled={deleting}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/20 text-xs text-rose-400 font-medium hover:bg-rose-500/30 disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting...' : 'Yes, delete all'}
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
           </section>
+
+          {/* ═══════════════════════════════════════════════════════════════
+              ADVANCED - Collapsed by default
+              ═══════════════════════════════════════════════════════════════ */}
+          <section>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              {showAdvanced ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <HelpCircle size={14} />
+              Advanced / Help
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 space-y-4 animate-fade-in">
+                {/* MCP Config */}
+                <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Server size={14} className="text-emerald-400" />
+                    <span className="text-sm text-zinc-300">Claude Desktop MCP Config</span>
+                  </div>
+                  <div className="relative group">
+                    <pre className="p-3 rounded-lg bg-zinc-800 text-xs text-zinc-400 font-mono overflow-x-auto">
+                      {mcpConfig}
+                    </pre>
+                    <button
+                      onClick={handleCopyConfig}
+                      className="absolute top-2 right-2 p-1.5 rounded bg-zinc-700 text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Keyboard shortcuts */}
+                <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+                  <p className="text-sm text-zinc-300 mb-3">Keyboard Shortcuts</p>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500">Toggle Capture</span>
+                      <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">⌘⇧C</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500">Navigate Pages</span>
+                      <kbd className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">⌘1-4</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Storage location */}
+                <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+                  <p className="text-sm text-zinc-300 mb-2">Data Location</p>
+                  <code className="text-xs text-zinc-500 font-mono">~/.contextbridge/memories.db</code>
+                </div>
+
+                {/* Version */}
+                <p className="text-xs text-zinc-600 text-center">
+                  ContextBridge v0.1.0-alpha
+                </p>
+              </div>
+            )}
+          </section>
+
         </div>
       </div>
     </div>
