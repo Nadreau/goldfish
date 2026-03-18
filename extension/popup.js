@@ -84,7 +84,7 @@ async function init() {
   // Open app button
   document.getElementById('openApp').addEventListener('click', () => {
     // Try to open the Tauri app via custom protocol
-    window.open('contextbridge://', '_blank');
+    window.open('goldfish://', '_blank');
   });
 }
 

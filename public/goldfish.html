@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      width: 140px;
+      height: 140px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .scene {
+      width: 140px;
+      height: 140px;
+      position: relative;
+      -webkit-app-region: drag;
+    }
+
+    /* ─── Capture-status glow ring ─── */
+    .glow-ring {
+      position: absolute;
+      top: 6px; left: 6px;
+      width: 128px; height: 128px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      transition: opacity 1s, box-shadow 1s;
+    }
+    .glow-ring.active {
+      box-shadow:
+        0 0 12px rgba(245, 158, 11, 0.25),
+        0 0 24px rgba(245, 158, 11, 0.10),
+        inset 0 0 8px rgba(245, 158, 11, 0.08);
+      animation: glow-breathe 3s ease-in-out infinite;
+    }
+    .glow-ring.paused {
+      box-shadow:
+        0 0 6px rgba(100, 116, 139, 0.12),
+        0 0 12px rgba(100, 116, 139, 0.05);
+      animation: none;
+    }
+    @keyframes glow-breathe {
+      0%, 100% { opacity: 0.7; }
+      50%      { opacity: 1; }
+    }
+
+    /* ─── Fish bowl — glass sphere ─── */
+    .bowl {
+      position: absolute;
+      top: 10px; left: 10px;
+      width: 120px; height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(
+        ellipse at 40% 35%,
+        rgba(140, 210, 230, 0.10) 0%,
+        rgba(100, 190, 220, 0.16) 35%,
+        rgba(60, 155, 195, 0.22) 65%,
+        rgba(35, 120, 165, 0.28) 100%
+      );
+      border: 2px solid rgba(170, 215, 235, 0.30);
+      box-shadow:
+        inset 0 8px 20px rgba(130, 210, 240, 0.10),
+        inset 0 -12px 20px rgba(20, 70, 110, 0.12),
+        0 3px 15px rgba(0, 0, 0, 0.18),
+        0 1px 3px rgba(0, 0, 0, 0.10),
+        0 0 8px rgba(130, 200, 230, 0.08);
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    /* Glass highlights */
+    .bowl::before {
+      content: '';
+      position: absolute;
+      top: 10px; left: 20px;
+      width: 32px; height: 14px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.28);
+      filter: blur(3px);
+      pointer-events: none;
+    }
+    .bowl::after {
+      content: '';
+      position: absolute;
+      top: 22px; left: 50px;
+      width: 12px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      filter: blur(2px);
+      pointer-events: none;
+    }
+
+    .water-line {
+      position: absolute;
+      top: 16px; left: 18px; right: 18px;
+      height: 1px;
+      background: linear-gradient(90deg,
+        transparent, rgba(255,255,255,0.18) 25%, rgba(255,255,255,0.25) 50%,
+        rgba(255,255,255,0.18) 75%, transparent);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* Canvas sits inside the bowl, renders fish only */
+    #fishCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 120px; height: 120px;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Close button */
+    .close-btn {
+      position: absolute;
+      top: 4px; right: 4px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.30);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.15);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 20;
+      -webkit-app-region: no-drag;
+    }
+    .scene:hover .close-btn { opacity: 0.7; }
+    .close-btn:hover { opacity: 1 !important; background: rgba(239,68,68,0.75); }
+    .close-btn svg { width: 8px; height: 8px; }
+
+    /* ─── Always-visible status indicator ─── */
+    .status-indicator {
+      position: absolute;
+      bottom: 2px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; align-items: center; gap: 4px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .status-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      transition: background 0.6s, box-shadow 0.6s;
+    }
+    .status-dot.active {
+      background: #f59e0b;
+      box-shadow: 0 0 5px rgba(245, 158, 11, 0.6), 0 0 10px rgba(245, 158, 11, 0.2);
+      animation: pulse-dot 2.5s ease-in-out infinite;
+    }
+    .status-dot.paused {
+      background: #64748b;
+      box-shadow: none;
+      animation: none;
+    }
+    @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    .status-label {
+      font-family: -apple-system, system-ui, sans-serif;
+      font-size: 8px; font-weight: 500;
+      letter-spacing: 0.3px;
+      opacity: 0;
+      transition: opacity 0.4s;
+      padding: 1px 6px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .status-label.active { color: rgba(245, 158, 11, 0.9); }
+    .status-label.paused { color: rgba(148, 163, 184, 0.8); }
+    .scene:hover .status-label { opacity: 1; }
+
+    /* Bubbles */
+    .bubble {
+      position: absolute; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4), rgba(255,255,255,0.05));
+      border: 1px solid rgba(255,255,255,0.10);
+      pointer-events: none; z-index: 3;
+      animation: bubble-rise 3.5s ease-out forwards;
+    }
+    @keyframes bubble-rise {
+      0%   { opacity: 0.4; transform: translateY(0) scale(1); }
+      50%  { opacity: 0.2; }
+      100% { opacity: 0; transform: translateY(-28px) translateX(3px) scale(0.25); }
+    }
+  </style>
+</head>
+<body>
+  <div class="scene" id="scene" data-tauri-drag-region>
+    <div class="glow-ring paused" id="glowRing"></div>
+
+    <div class="bowl" id="bowl" data-tauri-drag-region>
+      <div class="water-line"></div>
+      <canvas id="fishCanvas" width="240" height="240"></canvas>
+    </div>
+
+    <div class="close-btn" id="closeBtn">
+      <svg viewBox="0 0 10 10" stroke="white" stroke-width="1.5" fill="none">
+        <line x1="2" y1="2" x2="8" y2="8"/><line x1="8" y1="2" x2="2" y2="8"/>
+      </svg>
+    </div>
+
+    <div class="status-indicator">
+      <div class="status-dot paused" id="statusDot"></div>
+      <span class="status-label paused" id="statusLabel">Paused</span>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════════════
+    // Goldfish — Canvas-rendered fish (zero ghost images possible)
+    //            + screen-wide cursor curiosity + capture status
+    // ═══════════════════════════════════════════════════════════════════
+
+    const BOWL = 120;
+    const C = BOWL / 2;       // 60 — bowl center in CSS px
+    const FISH_W = 40;
+    const FISH_H = 28;
+    const SAFE_R = C - FISH_W / 2 - 8;
+
+    // Canvas is 2× for retina
+    const canvas = document.getElementById('fishCanvas');
+    const ctx = canvas.getContext('2d', { alpha: true });
+    const SCALE = 2; // canvas pixels per CSS pixel
+
+    // Double-buffer: draw fish to offscreen canvas, then stamp onto visible.
+    // This completely replaces every pixel each frame, preventing the
+    // ghost-fish artifacts macOS's window compositor creates with clearRect.
+    const offscreen = document.createElement('canvas');
+    offscreen.width = canvas.width;
+    offscreen.height = canvas.height;
+    const offCtx = offscreen.getContext('2d', { alpha: true });
+
+    // State
+    let px = C, py = C;
+    let heading = Math.random() * Math.PI * 2;
+    let speed = 0.22;
+    let targetSpeed = 0.22;
+
+    // Waypoint
+    let wpx = C, wpy = C;
+    let wpTimer = 0;
+
+    // Cursor
+    let cursorActive = false;
+    let cursorBowlX = C, cursorBowlY = C;
+
+    // Animation
+    let swimPhase = Math.random() * 100;
+
+    // Fish image — loaded off-screen, drawn to canvas each frame
+    let fishLoaded = false;
+    const fishImg = new Image();
+    fishImg.onload = () => { fishLoaded = true; };
+    fishImg.src = 'goldfish-profile.png';
+
+    const bowlEl = document.getElementById('bowl');
+    const glowRing = document.getElementById('glowRing');
+    const statusDot = document.getElementById('statusDot');
+    const statusLabel = document.getElementById('statusLabel');
+
+    // ─── Helpers ──────────────────────────────────────────────────────
+    function angleDiff(a, b) {
+      let d = b - a;
+      while (d > Math.PI)  d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      return d;
+    }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    // ─── Pick waypoint ────────────────────────────────────────────────
+    function pickWaypoint() {
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * SAFE_R * 0.7;
+      wpx = C + Math.cos(angle) * r;
+      wpy = C + Math.sin(angle) * r;
+      wpTimer = 200 + Math.random() * 300;
+    }
+    pickWaypoint();
+
+    // ─── Global cursor tracking ──────────────────────────────────────
+    let windowX = 0, windowY = 0;
+
+    async function pollCursor() {
+      if (!window.__TAURI__) return;
+      try {
+        const [cx, cy] = await window.__TAURI__.core.invoke('get_cursor_position');
+        const win = window.__TAURI__.webviewWindow
+          ? window.__TAURI__.webviewWindow.getCurrentWebviewWindow()
+          : null;
+        if (win) {
+          const pos = await win.outerPosition();
+          windowX = pos.x;
+          windowY = pos.y;
+          const sf = await win.scaleFactor();
+          const relX = (cx - windowX / sf) - 10 - C;
+          const relY = (cy - windowY / sf) - 10 - C;
+          const dist = Math.sqrt(relX * relX + relY * relY);
+          if (dist > 5) {
+            cursorActive = true;
+            const angle = Math.atan2(relY, relX);
+            const mapR = Math.min(dist * 0.15, SAFE_R * 0.8);
+            cursorBowlX = C + Math.cos(angle) * mapR;
+            cursorBowlY = C + Math.sin(angle) * mapR;
+          } else {
+            cursorActive = false;
+          }
+        }
+      } catch {
+        cursorActive = false;
+      }
+    }
+    setInterval(pollCursor, 150);
+
+    // ─── Capture status polling ──────────────────────────────────────
+    let captureActive = false;
+
+    async function pollCaptureStatus() {
+      if (!window.__TAURI__) return;
+      try {
+        const status = await window.__TAURI__.core.invoke('get_capture_status');
+        const wasActive = captureActive;
+        captureActive = status.is_active;
+        if (captureActive !== wasActive) updateStatusUI(captureActive);
+      } catch { /* silent */ }
+    }
+
+    function updateStatusUI(active) {
+      if (active) {
+        glowRing.className = 'glow-ring active';
+        statusDot.className = 'status-dot active';
+        statusLabel.className = 'status-label active';
+        statusLabel.textContent = 'Watching';
+      } else {
+        glowRing.className = 'glow-ring paused';
+        statusDot.className = 'status-dot paused';
+        statusLabel.className = 'status-label paused';
+        statusLabel.textContent = 'Paused';
+      }
+    }
+
+    setInterval(pollCaptureStatus, 3000);
+    setTimeout(pollCaptureStatus, 500);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Main loop — physics + canvas render
+    // ═══════════════════════════════════════════════════════════════════
+    function update() {
+      swimPhase += 0.016;
+
+      // ── Waypoint ──
+      wpTimer--;
+      const dxw = wpx - px, dyw = wpy - py;
+      const distWp = Math.sqrt(dxw * dxw + dyw * dyw);
+      if (distWp < 8 || wpTimer <= 0) pickWaypoint();
+
+      // ── Desired heading ──
+      let desiredHeading = Math.atan2(wpy - py, wpx - px);
+
+      // ── Screen-wide cursor curiosity ──
+      if (cursorActive) {
+        const cursorHeading = Math.atan2(cursorBowlY - py, cursorBowlX - px);
+        const cursorDist = Math.sqrt((cursorBowlX - px) ** 2 + (cursorBowlY - py) ** 2);
+        if (cursorDist > 8) {
+          const pull = 0.55;
+          const cursorDiff = angleDiff(desiredHeading, cursorHeading);
+          desiredHeading += cursorDiff * pull;
+        }
+      }
+
+      // ── Smooth turn ──
+      const diff = angleDiff(heading, desiredHeading);
+      heading += diff * 0.018;
+
+      // ── Speed ──
+      const farness = Math.min(distWp / 35, 1);
+      targetSpeed = lerp(0.12, 0.25, farness);
+      speed = lerp(speed, targetSpeed, 0.008);
+
+      // ── Move ──
+      px += Math.cos(heading) * speed;
+      py += Math.sin(heading) * speed;
+
+      // ── Circular boundary ──
+      const dx = px - C, dy = py - C;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > SAFE_R) {
+        px = C + (dx / dist) * SAFE_R;
+        py = C + (dy / dist) * SAFE_R;
+        heading = Math.atan2(-dy, -dx) + (Math.random() - 0.5) * 0.4;
+        pickWaypoint();
+      }
+
+      // ── Canvas render (double-buffered) ──
+      // Draw fish to offscreen canvas first, then stamp the entire
+      // offscreen buffer onto the visible canvas using 'copy' composite.
+      // This replaces EVERY pixel in one operation — the only reliable
+      // way to prevent ghost-fish artifacts on macOS transparent windows.
+      offCtx.clearRect(0, 0, offscreen.width, offscreen.height);
+
+      if (fishLoaded) {
+        const t = swimPhase;
+        const swimFreq = 1.5 + speed * 2;
+        const lateral = Math.sin(t * swimFreq) * (0.6 + speed * 1.2);
+        const perpX = -Math.sin(heading) * lateral;
+        const perpY =  Math.cos(heading) * lateral;
+        const bob = Math.sin(t * 0.8) * 1.0;
+        const tiltSwim = Math.sin(t * swimFreq) * (0.03 + speed * 0.025);
+        const tiltTurn = diff * 0.12;
+        const scaleX = Math.cos(heading) < 0 ? -1 : 1;
+        const tilt = (tiltSwim + tiltTurn) * scaleX;
+
+        const rx = (px + perpX) * SCALE;
+        const ry = (py + perpY + bob) * SCALE;
+        const fw = FISH_W * SCALE;
+        const fh = FISH_H * SCALE;
+
+        offCtx.save();
+        offCtx.translate(rx, ry);
+        offCtx.scale(scaleX, 1);
+        offCtx.rotate(tilt);
+        offCtx.drawImage(fishImg, -fw / 2, -fh / 2, fw, fh);
+        offCtx.restore();
+      }
+
+      // Stamp offscreen → visible in one 'copy' operation (full pixel replacement)
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(offscreen, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+
+      maybeSpawnBubble();
+      requestAnimationFrame(update);
+    }
+
+    requestAnimationFrame(update);
+
+    // ─── Bubbles ──────────────────────────────────────────────────────
+    let bubbleClock = 0;
+    function maybeSpawnBubble() {
+      bubbleClock++;
+      if (bubbleClock < 140 || Math.random() > 0.2) return;
+      bubbleClock = 0;
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      const sz = 2 + Math.random() * 2.5;
+      b.style.width = sz + 'px';
+      b.style.height = sz + 'px';
+      b.style.left = (px + Math.cos(heading) * 12 + (Math.random() - 0.5) * 4) + 'px';
+      b.style.top  = (py + Math.sin(heading) * 12) + 'px';
+      bowlEl.appendChild(b);
+      setTimeout(() => b.remove(), 3500);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Interactions
+    // ═══════════════════════════════════════════════════════════════════
+
+    document.getElementById('scene').addEventListener('mousedown', async (e) => {
+      if (e.button !== 0 || e.ctrlKey) return;
+      if (e.target.closest('.close-btn')) return;
+      try {
+        if (window.__TAURI__?.webviewWindow) {
+          await window.__TAURI__.webviewWindow.getCurrentWebviewWindow().startDragging();
+        } else if (window.__TAURI__?.window) {
+          await window.__TAURI__.window.getCurrent().startDragging();
+        }
+      } catch { /* drag region attribute handles it */ }
+    });
+
+    document.getElementById('scene').addEventListener('dblclick', async (e) => {
+      if (e.target.closest('.close-btn')) return;
+      try {
+        if (window.__TAURI__) await window.__TAURI__.core.invoke('show_main_window');
+      } catch (err) { console.error('show_main_window:', err); }
+    });
+
+    document.getElementById('closeBtn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        if (window.__TAURI__) await window.__TAURI__.core.invoke('hide_goldfish_overlay');
+      } catch (err) { console.error('hide:', err); }
+    });
+
+    document.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      try {
+        if (window.__TAURI__) await window.__TAURI__.core.invoke('quit_app');
+      } catch (err) { console.error('quit:', err); }
+    });
+  </script>
+</body>
+</html>

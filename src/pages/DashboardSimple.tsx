@@ -1,265 +1,239 @@
-/**
- * Dashboard — Feels like AI watching, not screenshots
- * Minimal feedback, smooth experience
- */
-import { useState, useEffect } from 'react';
-import { Power, Brain, Zap, Eye, AlertTriangle, CheckCircle, HardDrive, Activity } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Plus, XCircle, Brain, HardDrive, Sparkles, Eye } from 'lucide-react';
 import { useCaptureContext } from '../lib/captureContext';
-import { getMemoryStats, getAllMemories, checkCapturePermission, checkTesseractInstalled, formatBytes, type MemoryStats, type Memory } from '../lib/api';
+import AddMemoryModal from '../components/AddMemoryModal';
+import MemoryDetail from '../components/MemoryDetail';
+import {
+  getAllMemories, searchMemories, getActiveWindow, saveMemory,
+  deleteMemory as deleteMemoryApi, getMemoryStats, formatBytes,
+  formatRelativeTime, getMemoryPreview, cleanSourceApp, type Memory, type MemoryStats,
+} from '../lib/api';
 
 export default function Dashboard() {
-  const { isActive, captureCount, events, isCapturing, toggleCapture } = useCaptureContext();
+  const { captureCount } = useCaptureContext();
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [highlights, setHighlights] = useState<Memory[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [hasTesseract, setHasTesseract] = useState<boolean | null>(null);
-  const [toggling, setToggling] = useState(false);
-  const [recentApps, setRecentApps] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Memory | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  const handleToggle = async () => {
-    setToggling(true);
+  const fetchMemories = useCallback(async () => {
     try {
-      await toggleCapture();
-    } finally {
-      setToggling(false);
-    }
+      const mems = search.trim() ? await searchMemories(search, 50) : await getAllMemories(50);
+      setMemories(mems);
+      // Extract today's scene-analysis highlights — use LOCAL date, not UTC
+      const now = new Date();
+      const todayScenes = mems.filter(m => {
+        if (m.source !== 'scene-analysis') return false;
+        const d = new Date(m.timestamp);
+        return d.getFullYear() === now.getFullYear() &&
+               d.getMonth() === now.getMonth() &&
+               d.getDate() === now.getDate();
+      });
+      setHighlights(todayScenes.slice(0, 5));
+    } catch (err) { console.error(err); }
+  }, [search]);
+
+  const fetchStats = useCallback(async () => {
+    try { setStats(await getMemoryStats()); } catch (err) { console.error(err); }
+  }, []);
+
+  useEffect(() => { fetchMemories(); fetchStats(); }, [fetchMemories, fetchStats]);
+  useEffect(() => { const t = setTimeout(fetchMemories, 300); return () => clearTimeout(t); }, [search, fetchMemories]);
+  useEffect(() => { const i = setInterval(fetchStats, 10000); return () => clearInterval(i); }, [fetchStats]);
+  useEffect(() => { if (captureCount > 0) { fetchMemories(); fetchStats(); } }, [captureCount, fetchMemories, fetchStats]);
+
+  const handleDelete = async (id: string) => {
+    try { await deleteMemoryApi(id); setMemories(prev => prev.filter(m => m.id !== id)); if (selected?.id === id) setSelected(null); await fetchStats(); }
+    catch (err) { console.error(err); }
   };
 
-  // Check permissions on mount
-  useEffect(() => {
-    checkCapturePermission().then(setHasPermission).catch(() => setHasPermission(false));
-    checkTesseractInstalled().then(setHasTesseract).catch(() => setHasTesseract(false));
-  }, []);
-
-  // Keyboard shortcut
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
-        e.preventDefault();
-        toggleCapture();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleCapture]);
-
-  // Fetch stats quietly
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setStats(await getMemoryStats());
-        const memories = await getAllMemories(10);
-        const apps = [...new Set(memories.map(m => m.source_app).filter(Boolean))].slice(0, 4);
-        setRecentApps(apps as string[]);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Refresh stats when events change (but quietly, no toasts)
-  useEffect(() => {
-    if (events.length > 0) {
-      getMemoryStats().then(setStats).catch(console.error);
-    }
-  }, [events.length]);
-
-  const systemReady = hasPermission === true && hasTesseract === true;
-  const needsSetup = hasPermission === false || hasTesseract === false;
+  const handleAddMemory = async (content: string, tags: string[]) => {
+    try {
+      const win = await getActiveWindow();
+      await saveMemory(content, tags, 'manual', win.app_name !== 'Unknown' ? win.app_name : undefined);
+      await Promise.all([fetchMemories(), fetchStats()]);
+      setShowAddModal(false);
+    } catch (err) { console.error(err); }
+  };
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b] p-6 overflow-hidden">
-      
-      {/* Setup Warning - Only show if needed */}
-      {needsSetup && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
-          <AlertTriangle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Header */}
+      {/* Drag region for macOS overlay title bar */}
+      <div data-tauri-drag-region className="drag-region h-8 flex-shrink-0" />
+      <header className="px-8 pb-4">
+        <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm font-medium text-amber-400">Setup Required</p>
-            <p className="text-xs text-zinc-400 mt-1">
-              {hasPermission === false && 'Enable Screen Recording in System Settings → Privacy & Security'}
-              {hasPermission !== false && hasTesseract === false && 'Install OCR: brew install tesseract'}
-            </p>
+            <h1 className="text-[28px] font-bold text-white tracking-tight">Activity</h1>
+            <p className="text-[14px] text-slate-400 mt-1">What I've been observing</p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white text-[13px] font-semibold transition-all duration-200 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 cursor-pointer"
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            Add Memory
+          </button>
+        </div>
+      </header>
+
+      {/* Today's Highlights */}
+      {highlights.length > 0 && !search && (
+        <div className="px-8 pb-4">
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-2.5">Today's highlights</p>
+          <div className="space-y-2">
+            {highlights.map(h => {
+              const lines = h.content.split('\n');
+              const activity = lines[0]?.replace('## ', '') || 'Activity';
+              const details = lines.filter(l => l.startsWith('- ')).slice(0, 2);
+              return (
+                <button
+                  key={h.id}
+                  onClick={() => setSelected(h)}
+                  className="w-full text-left p-4 rounded-xl glass glass-hover cursor-pointer transition-all group"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Eye size={14} className="text-amber-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] text-slate-200 group-hover:text-white transition-colors font-medium truncate">
+                        {activity}
+                      </p>
+                      {details.length > 0 && (
+                        <p className="text-[12px] text-slate-500 mt-1 truncate">
+                          {details.map(d => d.replace('- ', '')).join(' · ')}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {cleanSourceApp(h.source_app) && <span className="text-[11px] text-slate-600">{cleanSourceApp(h.source_app)}</span>}
+                        <span className="text-[11px] text-slate-700">{formatRelativeTime(h.timestamp)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          THE BIG TOGGLE - Clean & Simple
-          ═══════════════════════════════════════════════════════════════════ */}
-      <button
-        onClick={handleToggle}
-        disabled={toggling || needsSetup}
-        className={`w-full flex items-center justify-between p-8 rounded-2xl transition-all duration-500 mb-8 disabled:opacity-50 ${
-          isActive
-            ? 'bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border-2 border-emerald-500/30'
-            : 'bg-zinc-900/50 border-2 border-zinc-800 hover:border-zinc-700'
-        }`}
-      >
-        <div className="flex items-center gap-5">
-          {/* Status indicator - subtle breathing animation when active */}
-          <div className="relative">
-            <div className={`w-4 h-4 rounded-full transition-colors duration-500 ${
-              isActive ? 'bg-emerald-400' : 'bg-zinc-600'
-            }`} />
-            {isActive && (
-              <div className="absolute inset-0 w-4 h-4 rounded-full bg-emerald-400/50 animate-[ping_2s_ease-in-out_infinite]" />
-            )}
-          </div>
-          
-          <div className="text-left">
-            <h1 className={`text-2xl font-semibold transition-colors duration-500 ${
-              isActive ? 'text-emerald-400' : 'text-zinc-500'
-            }`}>
-              {isActive ? 'Watching' : 'Paused'}
-            </h1>
-            <p className="text-sm text-zinc-500 mt-1">
-              {isActive 
-                ? 'AI is learning from your screen'
-                : 'Click to start watching'}
-            </p>
-          </div>
-        </div>
-
-        <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
-          isActive ? 'bg-emerald-500/20' : 'bg-zinc-800'
-        }`}>
-          <Power size={24} className={`transition-colors duration-500 ${
-            isActive ? 'text-emerald-400' : 'text-zinc-500'
-          }`} />
-        </div>
-      </button>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          STATS - Clean cards
-          ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <StatCard 
-          icon={Brain} 
-          label="Memories" 
-          value={stats?.total_memories ?? 0}
-          color="violet"
-        />
-        <StatCard 
-          icon={Zap} 
-          label="Today" 
-          value={stats?.memories_today ?? 0}
-          color="amber"
-        />
-        <StatCard 
-          icon={Eye} 
-          label="This Session" 
-          value={captureCount}
-          color="emerald"
-          pulse={isActive && isCapturing}
-        />
-        <StatCard 
-          icon={HardDrive} 
-          label="Storage" 
-          value={stats ? formatBytes(stats.storage_bytes) : '0 B'}
-          color="cyan"
-          isText
-        />
+      {/* Stats strip */}
+      <div className="flex gap-3 px-8 pb-4">
+        <StatCard icon={Brain} label="Memories" value={stats?.total_memories ?? 0} color="indigo" />
+        <StatCard icon={Eye} label="Today" value={stats?.memories_today ?? 0} color="violet" />
+        <StatCard icon={HardDrive} label="Storage" value={stats ? formatBytes(stats.storage_bytes) : '0 B'} color="sky" text />
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          ACTIVITY - Minimal, shows app context not screenshot details
-          ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 overflow-hidden">
-        <div className="flex items-center gap-2 mb-4">
-          <Activity size={14} className={isActive ? 'text-emerald-400' : 'text-zinc-600'} />
-          <h2 className="text-sm font-medium text-zinc-400">Recent Activity</h2>
-          {isActive && (
-            <span className="text-xs text-emerald-400/60 ml-auto">Live</span>
+      {/* Search */}
+      <div className="px-8 pb-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search your memory..."
+            className="w-full pl-11 pr-10 py-2.5 rounded-xl glass text-[14px] text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer">
+              <XCircle size={16} />
+            </button>
           )}
         </div>
-        
-        {events.length === 0 && (stats?.total_memories ?? 0) === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center">
-            <Brain size={40} className="text-zinc-800 mb-4" />
-            <p className="text-zinc-500 text-sm">
-              {isActive ? 'Learning your workflow...' : 'Start watching to build memory'}
+      </div>
+
+      {/* Memory List */}
+      <div className="flex-1 overflow-y-auto px-8 pb-6">
+        {memories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/10 flex items-center justify-center mb-4 animate-float">
+              <Sparkles size={20} className="text-amber-400" />
+            </div>
+            <p className="text-[15px] font-medium text-slate-300">
+              {search ? 'No matches found' : 'Building your memory...'}
+            </p>
+            <p className="text-[13px] text-slate-500 mt-1 text-center max-w-xs">
+              {search ? 'Try different keywords' : 'Memories will appear here as I watch'}
             </p>
           </div>
         ) : (
-          <div className="space-y-2 overflow-y-auto max-h-64 pr-2">
-            {/* Show recent app switches, not every capture */}
-            {events.slice(0, 10).map((event, i) => (
-              <div 
-                key={event.id}
-                className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50"
-                style={{ opacity: 1 - (i * 0.08) }}
-              >
-                <div className={`w-2 h-2 rounded-full ${event.saved ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-                <span className="text-sm text-zinc-400 truncate flex-1">
-                  {event.app || 'Screen activity'}
-                </span>
-                <span className="text-xs text-zinc-600">
-                  {event.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Recent apps - subtle context */}
-        {recentApps.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-zinc-800/50">
-            <p className="text-xs text-zinc-600 mb-2">Context from</p>
-            <div className="flex flex-wrap gap-2">
-              {recentApps.map((app, i) => (
-                <span key={i} className="px-2 py-1 rounded bg-zinc-800/50 text-xs text-zinc-500">
-                  {app}
-                </span>
-              ))}
-            </div>
+          <div className="space-y-1">
+            {memories.map(m => {
+              const preview = getMemoryPreview(m);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setSelected(m)}
+                  className="w-full text-left px-4 py-3 rounded-xl glass-hover cursor-pointer transition-all duration-200 group hover:bg-white/[0.04]"
+                >
+                  <div className="flex items-start gap-3">
+                    <SourceDot source={m.source} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-slate-200 truncate group-hover:text-white transition-colors leading-snug font-medium">
+                        {preview.title}
+                      </p>
+                      {preview.detail && (
+                        <p className="text-[12px] text-slate-500 truncate mt-0.5 leading-snug">
+                          {preview.detail}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {cleanSourceApp(m.source_app) && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/[0.04] text-[10px] text-slate-500 font-medium">
+                            {cleanSourceApp(m.source_app)}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-600">{formatRelativeTime(m.timestamp)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Footer - keyboard hint */}
-      <div className="flex-shrink-0 pt-4 border-t border-zinc-800/30 flex items-center justify-between text-xs text-zinc-600">
-        <span>ContextBridge</span>
-        <kbd className="px-2 py-0.5 rounded bg-zinc-800/50 font-mono">⌘⇧C</kbd>
-      </div>
+      {selected && <MemoryDetail memory={selected} onClose={() => setSelected(null)} onDelete={handleDelete} />}
+      {showAddModal && <AddMemoryModal onClose={() => setShowAddModal(false)} onSave={handleAddMemory} />}
     </div>
   );
 }
 
-// Clean stat card component
-function StatCard({ 
-  icon: Icon, 
-  label, 
-  value, 
-  color,
-  pulse = false,
-  isText = false
-}: { 
-  icon: any; 
-  label: string; 
-  value: number | string;
-  color: 'violet' | 'amber' | 'emerald' | 'cyan';
-  pulse?: boolean;
-  isText?: boolean;
-}) {
-  const colors = {
-    violet: 'text-violet-400',
-    amber: 'text-amber-400',
-    emerald: 'text-emerald-400',
-    cyan: 'text-cyan-400',
+function StatCard({ icon: Icon, label, value, color, text }: { icon: any; label: string; value: string | number; color: string; text?: boolean }) {
+  const colors: Record<string, string> = {
+    indigo: 'from-amber-500/15 to-amber-500/5 text-amber-400 border-amber-500/10',
+    violet: 'from-orange-500/15 to-orange-500/5 text-orange-400 border-orange-500/10',
+    sky: 'from-sky-500/15 to-sky-500/5 text-sky-400 border-sky-500/10',
   };
-
   return (
-    <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
-      <div className="flex items-center gap-2 text-zinc-500 mb-2">
-        <Icon size={14} className={pulse ? 'animate-pulse' : ''} />
-        <span className="text-xs">{label}</span>
+    <div className={`flex-1 p-3.5 rounded-xl bg-gradient-to-br border ${colors[color]}`}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Icon size={13} className="opacity-60" />
+        <span className="text-[10px] font-medium text-slate-400">{label}</span>
       </div>
-      <p className={`text-xl font-semibold ${colors[color]} ${isText ? 'text-lg' : ''}`}>
+      <p className={`${text ? 'text-[16px]' : 'text-[20px]'} font-bold text-white tabular-nums tracking-tight`}>
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
+    </div>
+  );
+}
+
+function SourceDot({ source }: { source: string }) {
+  const colors: Record<string, string> = {
+    'clipboard': 'bg-sky-400 shadow-sky-400/40',
+    'screenshot': 'bg-amber-400 shadow-amber-400/40',
+    'ocr-capture': 'bg-emerald-400 shadow-emerald-400/40',
+    'scene-analysis': 'bg-amber-400 shadow-amber-400/40',
+    'smart-capture': 'bg-emerald-400 shadow-emerald-400/40',
+    'manual': 'bg-orange-400 shadow-orange-400/40',
+    'app-tracking': 'bg-amber-400 shadow-amber-400/40',
+  };
+  return (
+    <div className="mt-1.5 flex-shrink-0">
+      <div className={`w-2 h-2 rounded-full shadow-[0_0_6px] ${colors[source] || 'bg-slate-500 shadow-slate-500/40'}`} />
     </div>
   );
 }

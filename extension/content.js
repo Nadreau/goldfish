@@ -33,7 +33,7 @@ const CONFIG = {
     'remember when', 'we talked about', 'you know',
     'the thing', 'that thing', 'working on',
     'help me with', 'continue', 'pick up where',
-    'bluon', 'contextbridge', 'patent', // Niko's projects
+    'bluon', 'goldfish', 'patent', // Niko's projects
   ],
   
   // Site-specific selectors
@@ -256,7 +256,7 @@ function createStatusIndicator() {
   }
   
   statusIndicator = document.createElement('div');
-  statusIndicator.id = 'contextbridge-status';
+  statusIndicator.id = 'goldfish-status';
   statusIndicator.innerHTML = `
     <div class="cb-indicator">
       <div class="cb-dot"></div>

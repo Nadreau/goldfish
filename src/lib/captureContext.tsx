@@ -1,58 +1,18 @@
 /**
- * Capture Context — Simplified global state for capture
- * ONE toggle to rule them all
+ * Capture Context — Global state for screen capture
+ * Capture is always-on (auto-started by Rust backend).
+ * Frontend just polls status and manages scene processing.
+ * Pause/Resume only available via tray menu.
  */
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { 
-  smartCapture,
-  rapidCaptureWithOcr,
-  startCapture, 
-  stopCapture, 
-  getCaptureStatus,
-  type CaptureResult 
-} from './api';
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export interface ActivityEvent {
-  id: string;
-  summary: string;
-  app?: string;
-  timestamp: Date;
-  saved: boolean;
-}
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { getCaptureStatus } from './api';
+import { startSceneProcessor, stopSceneProcessor } from './sceneProcessor';
+import { startMemoryCompactor, stopMemoryCompactor } from './memoryCompactor';
 
 interface CaptureContextValue {
   isActive: boolean;
   captureCount: number;
-  events: ActivityEvent[];
-  isCapturing: boolean;
-  
-  // Actions
-  toggleCapture: () => Promise<void>;
-  clearEvents: () => void;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Constants
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const MAX_EVENTS = 100;
-// Read capture interval from localStorage, default to 1 second
-const getStoredInterval = () => {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('capture_interval');
-    return stored ? parseInt(stored) : 5000;
-  }
-  return 5000;
-};
-const CAPTURE_INTERVAL_MS = getStoredInterval();
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Context
-// ═══════════════════════════════════════════════════════════════════════════════
 
 const CaptureContext = createContext<CaptureContextValue | null>(null);
 
@@ -62,135 +22,60 @@ export function useCaptureContext() {
   return ctx;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Provider
-// ═══════════════════════════════════════════════════════════════════════════════
-
 export function CaptureProvider({ children }: { children: ReactNode }) {
-  const [isActive, setIsActive] = useState(false);
+  const [isActive, setIsActive] = useState(true); // Assume active (auto-start)
   const [captureCount, setCaptureCount] = useState(0);
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [isCapturing, setIsCapturing] = useState(false);
-  
-  const intervalRef = useRef<number | null>(null);
-  const isCapturingRef = useRef(false);
 
-  // Add event helper
-  const addEvent = useCallback((result: CaptureResult) => {
-    if (!result.changed || !result.summary) return;
-    
-    const newEvent: ActivityEvent = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      summary: result.summary,
-      timestamp: new Date(),
-      saved: !!result.saved_id,
-    };
-    
-    setEvents(prev => [newEvent, ...prev].slice(0, MAX_EVENTS));
-  }, []);
-
-  // Main capture function - uses OCR for real screen understanding
-  const doCapture = useCallback(async () => {
-    if (isCapturingRef.current) return;
-    isCapturingRef.current = true;
-    setIsCapturing(true);
-
-    try {
-      // Use rapid OCR capture for full screen understanding
-      const result = await rapidCaptureWithOcr();
-      if (result.changed) {
-        setCaptureCount(prev => prev + 1);
-        addEvent(result);
-      }
-    } catch (err) {
-      console.error('Capture error:', err);
-      // Fallback to smart capture if OCR fails
-      try {
-        const fallbackResult = await smartCapture();
-        if (fallbackResult.changed) {
-          setCaptureCount(prev => prev + 1);
-          addEvent(fallbackResult);
-        }
-      } catch (fallbackErr) {
-        console.error('Fallback capture also failed:', fallbackErr);
-      }
-    } finally {
-      isCapturingRef.current = false;
-      setIsCapturing(false);
-    }
-  }, [addEvent]);
-
-  // Start/stop capture loop
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    if (isActive) {
-      // Immediate capture
-      doCapture();
-      
-      // Set up interval
-      intervalRef.current = window.setInterval(doCapture, CAPTURE_INTERVAL_MS);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [isActive, doCapture]);
-
-  // Check initial status on mount + auto-start if enabled
+  // Check initial status on mount
   useEffect(() => {
     getCaptureStatus().then(status => {
       setIsActive(status.is_active);
       setCaptureCount(status.capture_count);
-      
-      // Auto-start capture if enabled and not already active
-      if (!status.is_active && localStorage.getItem('auto_start_capture') === 'true') {
-        console.log('[ContextBridge] Auto-starting capture...');
-        startCapture().then(() => {
-          setIsActive(true);
-          setCaptureCount(0);
-        }).catch(console.error);
-      }
     }).catch(console.error);
   }, []);
 
-  // Toggle capture
-  const toggleCapture = useCallback(async () => {
-    try {
-      if (isActive) {
-        const status = await stopCapture();
-        setIsActive(false);
-        setCaptureCount(status.capture_count);
-      } else {
-        await startCapture();
-        setIsActive(true);
-        setCaptureCount(0);
-        setEvents([]);
+  // Listen for tray Pause/Resume events from Rust backend
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<{ is_active: boolean }>('capture-state-changed', (event) => {
+          setIsActive(event.payload.is_active);
+        });
+      } catch {
+        // Not in Tauri (browser mode) — ignore
       }
-    } catch (err) {
-      console.error('Toggle error:', err);
-    }
-  }, [isActive]);
-
-  const clearEvents = useCallback(() => {
-    setEvents([]);
+    })();
+    return () => { unlisten?.(); };
   }, []);
 
+  // Start/stop scene processor and memory compactor with capture
+  useEffect(() => {
+    if (isActive) {
+      startSceneProcessor();
+      startMemoryCompactor();
+    } else {
+      stopSceneProcessor();
+      stopMemoryCompactor();
+    }
+    return () => { stopSceneProcessor(); stopMemoryCompactor(); };
+  }, [isActive]);
+
+  // Poll capture status when active
+  useEffect(() => {
+    if (!isActive) return;
+    const interval = setInterval(() => {
+      getCaptureStatus().then(status => {
+        setCaptureCount(status.capture_count);
+        if (!status.is_active) setIsActive(false);
+      }).catch(console.error);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isActive]);
+
   return (
-    <CaptureContext.Provider value={{
-      isActive,
-      captureCount,
-      events,
-      isCapturing,
-      toggleCapture,
-      clearEvents,
-    }}>
+    <CaptureContext.Provider value={{ isActive, captureCount }}>
       {children}
     </CaptureContext.Provider>
   );

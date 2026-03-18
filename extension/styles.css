@@ -1,5 +1,5 @@
 /**
- * ContextBridge Extension Styles
+ * Goldfish Extension Styles
  * Minimal, non-intrusive, beautiful
  */
 
@@ -7,7 +7,7 @@
    Status Indicator - Floating pill in corner
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-#contextbridge-status {
+#goldfish-status {
   position: fixed;
   bottom: 20px;
   right: 20px;

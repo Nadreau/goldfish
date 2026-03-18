@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ContextBridge",
+  "name": "Goldfish",
   "version": "0.1.0",
   "description": "Your AI remembers everything. Type naturally, context flows automatically.",
   "permissions": [

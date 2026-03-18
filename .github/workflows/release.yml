@@ -1,0 +1,59 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri:build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+          body: |
+            ## Install Goldfish
+
+            1. Download the `.dmg` file below
+            2. Open the DMG and drag Goldfish to Applications
+            3. Right-click Goldfish in Applications → Open (required on first launch since the app isn't signed yet)
+            4. Follow the onboarding to connect your AI tools
+
+            ### Connect your AI tools via CLI
+
+            ```bash
+            npx goldfish-mcp setup
+            ```
+
+            Auto-detects and configures Claude Desktop, Claude Code, Cursor, and Windsurf.
+          draft: false
+          prerelease: true
