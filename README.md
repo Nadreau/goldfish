@@ -18,13 +18,18 @@ Goldfish captures your desktop activity and gives any AI assistant persistent me
 
 **[Download Goldfish for macOS →](https://github.com/Nadreau/contextbridge/releases/latest)**
 
-> On first launch: right-click the app → Open (required once since the app isn't code-signed yet).
+> **macOS will block the app on first launch** since it isn't code-signed yet. After installing, run this in Terminal:
+> ```bash
+> xattr -cr /Applications/Goldfish.app
+> ```
+> Then open Goldfish normally.
 
 ## Quick Start
 
 1. **Install** — Open the DMG, drag Goldfish to Applications
-2. **Launch** — Open Goldfish, follow the onboarding (set up Gemini API key for the vision engine)
-3. **Connect your AI** — The onboarding auto-detects your installed AI tools and connects them
+2. **Unblock** — Run `xattr -cr /Applications/Goldfish.app` in Terminal (one-time only)
+3. **Launch** — Open Goldfish, follow the onboarding (set up Gemini API key for the vision engine)
+4. **Connect your AI** — The onboarding auto-detects your installed AI tools and connects them
 
 That's it. Open Claude Desktop or Cursor and your AI now has access to your screen memory.
 
