@@ -303,118 +303,70 @@ async function runSetup(autoYes: boolean): Promise<void> {
   // ── Header ──
   console.log();
   console.log(`  ${c.bold}${c.cyan}\u{1F420} Goldfish Setup${c.reset}`);
-  console.log(`  ${c.dim}Connect your AI tools to your screen memory${c.reset}`);
+  console.log(`  ${c.dim}Your AI finally has a memory${c.reset}`);
   console.log();
 
-  // ── Check app installation ──
+  // ═══════════════════════════════════════════════════════════════════════
+  // Step 1: Get the desktop app installed and running
+  // ═══════════════════════════════════════════════════════════════════════
+
   if (!isAppInstalled()) {
-    console.log(`  ${c.yellow}⚠  Goldfish app not found in /Applications${c.reset}`);
+    console.log(`  ${c.dim}Goldfish app not found — let's install it${c.reset}`);
     console.log();
 
-    const shouldInstall = autoYes || await confirm(`  ${c.bold}Download and install Goldfish? ${c.dim}(Y/n)${c.reset} `);
+    const shouldInstall = autoYes || await confirm(`  Download and install Goldfish? ${c.dim}(Y/n)${c.reset} `);
     console.log();
 
     if (shouldInstall) {
       const installed = await installApp();
-      if (installed) {
+      if (!installed) {
+        console.log(`  ${c.dim}You can download manually from:${c.reset}`);
+        console.log(`  ${c.cyan}https://github.com/${GITHUB_REPO}/releases${c.reset}`);
         console.log();
-        // Launch the app
-        process.stdout.write(`  ${c.dim}Launching Goldfish...${c.reset}`);
-        try {
-          execSync(`open "${APP_PATH}"`);
-          console.log(` ${c.green}✓${c.reset}`);
-        } catch {
-          console.log(` ${c.dim}(open manually from Applications)${c.reset}`);
-        }
-        console.log();
+        return;
       }
-    } else {
-      console.log(`  ${c.dim}Skipped. Download later from https://github.com/${GITHUB_REPO}/releases${c.reset}`);
       console.log();
+    } else {
+      console.log(`  ${c.dim}Download the app first from:${c.reset}`);
+      console.log(`  ${c.cyan}https://github.com/${GITHUB_REPO}/releases${c.reset}`);
+      console.log();
+      console.log(`  ${c.dim}Then run ${c.cyan}npx goldfish-mcp setup${c.dim} again.${c.reset}`);
+      console.log();
+      return;
+    }
+  }
+
+  // App is installed — check if it's running
+  const isRunning = (() => {
+    try {
+      const result = execSync('pgrep -f "Goldfish.app"', { encoding: 'utf-8' });
+      return result.trim().length > 0;
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!isRunning) {
+    console.log(`  ${c.green}✓${c.reset} Goldfish app installed`);
+    process.stdout.write(`  ${c.dim}Launching Goldfish...${c.reset}`);
+    try {
+      execSync(`open "${APP_PATH}"`);
+      console.log(` ${c.green}✓${c.reset}`);
+    } catch {
+      console.log(` ${c.yellow}!${c.reset}`);
+      console.log(`  ${c.dim}Open Goldfish manually from /Applications${c.reset}`);
     }
   } else {
-    console.log(`  ${c.green}✓${c.reset} Goldfish app installed at ${c.dim}${APP_PATH}${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset} Goldfish app running`);
   }
 
-  // ── Check database ──
-  if (!existsSync(dbPath)) {
-    console.log(`  ${c.dim}Run the app once to start capturing — the database will be created automatically.${c.reset}`);
-    console.log();
-  } else {
-    console.log(`  ${c.green}✓${c.reset} Goldfish database found at ${c.dim}${dbPath}${c.reset}`);
-    console.log();
+  if (existsSync(dbPath)) {
+    console.log(`  ${c.green}✓${c.reset} Screen memory active`);
   }
-
-  // ── Detect tools ──
-  const tools = getToolConfigs();
-  const statuses = tools.map(t => ({ tool: t, status: getToolStatus(t) }));
-
-  console.log(`  ${c.bold}Detected AI Tools:${c.reset}`);
-  console.log();
-
-  for (const { tool, status } of statuses) {
-    const icon = statusIcon(status);
-    const label = statusLabel(status);
-    const nameStr = `${c.bold}${tool.name}${c.reset}`;
-    const statusColor = status === 'connected' ? c.green : status === 'ready' ? c.yellow : c.dim;
-    console.log(`  ${icon}  ${nameStr}  ${statusColor}${label}${c.reset}`);
-    if (status !== 'not_installed') {
-      console.log(`     ${c.dim}${tool.configPath}${c.reset}`);
-    }
-  }
-  console.log();
-
-  // ── Connect tools ──
-  const toConnect = statuses.filter(s => s.status === 'ready' && s.tool.format !== 'skip');
-
-  if (toConnect.length === 0) {
-    const connectedCount = statuses.filter(s => s.status === 'connected').length;
-    if (connectedCount > 0) {
-      console.log(`  ${c.green}\u2713 Already connected to ${connectedCount} tool${connectedCount > 1 ? 's' : ''}. You're all set!${c.reset}`);
-    } else {
-      console.log(`  ${c.dim}No AI tools found to configure. Install one of the supported tools first.${c.reset}`);
-    }
-    console.log();
-    return;
-  }
-
-  // Ask for confirmation unless --yes
-  const toolNames = toConnect.map(s => s.tool.name).join(', ');
-  let shouldConnect = autoYes;
-
-  if (!autoYes) {
-    console.log(`  ${c.bold}Ready to connect Goldfish to: ${c.cyan}${toolNames}${c.reset}`);
-    console.log();
-    shouldConnect = await confirm(`  ${c.bold}Proceed? ${c.dim}(Y/n)${c.reset} `);
-    console.log();
-  }
-
-  if (!shouldConnect) {
-    console.log(`  ${c.dim}Setup cancelled. Run again when you're ready.${c.reset}`);
-    console.log();
-    return;
-  }
-
-  // Perform connections
-  let connectedCount = 0;
-  for (const { tool } of toConnect) {
-    process.stdout.write(`  Configuring ${c.bold}${tool.name}${c.reset}... `);
-    if (connectTool(tool)) {
-      console.log(`${c.green}\u2713${c.reset}`);
-      connectedCount++;
-    } else {
-      console.log(`${c.red}\u2717${c.reset}`);
-    }
-  }
-
-  const alreadyConnected = statuses.filter(s => s.status === 'connected').length;
-  const total = connectedCount + alreadyConnected;
 
   console.log();
-  console.log(`  ${c.green}${c.bold}\u2705 Connected to ${total} tool${total > 1 ? 's' : ''}.${c.reset} Restart them to activate Goldfish.`);
-  console.log();
-  console.log(`  ${c.dim}Config added:${c.reset}`);
-  console.log(`  ${c.dim}"goldfish": { "command": "npx", "args": ["-y", "goldfish-mcp"] }${c.reset}`);
+  console.log(`  ${c.green}${c.bold}\u{1F420} You're good to go!${c.reset}`);
+  console.log(`  ${c.dim}Complete the setup in the Goldfish app — it handles everything from here.${c.reset}`);
   console.log();
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, ExternalLink, ChevronRight, Link2, CheckCircle, RefreshCw } from 'lucide-react';
-import { detectAiTools, connectAiTool, type AiToolStatus } from '../lib/api';
+import { Eye, EyeOff, ExternalLink, ChevronRight, Link2, CheckCircle, RefreshCw, Monitor, ShieldCheck } from 'lucide-react';
+import { detectAiTools, connectAiTool, checkCapturePermission, requestCapturePermission, type AiToolStatus } from '../lib/api';
 
 const TOOL_META: Record<string, { color: string; gradient: string; letter: string }> = {
   'claude-desktop': { color: 'text-orange-400', gradient: 'from-orange-500/20 to-amber-500/10', letter: 'C' },
@@ -19,16 +19,48 @@ export default function Onboarding({ onComplete }: Props) {
   const [keyVisible, setKeyVisible] = useState(false);
   const [tools, setTools] = useState<AiToolStatus[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [screenPermission, setScreenPermission] = useState<boolean | null>(null);
+  const [permissionRequested, setPermissionRequested] = useState(false);
 
   useEffect(() => {
     detectAiTools().then(setTools).catch(() => {});
   }, []);
 
+  // Check screen permission when we land on step 1
+  useEffect(() => {
+    if (step === 1) {
+      checkCapturePermission().then(setScreenPermission);
+    }
+  }, [step]);
+
+  // Poll for permission after requesting it (user has to toggle it in System Settings)
+  useEffect(() => {
+    if (step === 1 && permissionRequested && !screenPermission) {
+      const interval = setInterval(() => {
+        checkCapturePermission().then(granted => {
+          if (granted) {
+            setScreenPermission(true);
+            clearInterval(interval);
+          }
+        });
+      }, 1500);
+      return () => clearInterval(interval);
+    }
+  }, [step, permissionRequested, screenPermission]);
+
+  const handleRequestPermission = async () => {
+    setPermissionRequested(true);
+    await requestCapturePermission();
+    // Check immediately in case it was already granted
+    const granted = await checkCapturePermission();
+    setScreenPermission(granted);
+  };
+
   const handleSaveKey = () => {
     if (geminiKey.trim()) {
       localStorage.setItem('gemini_api_key', geminiKey.trim());
     }
-    setStep(2);
+    setStep(3);
   };
 
   const handleConnect = async (toolId: string) => {
@@ -43,7 +75,6 @@ export default function Onboarding({ onComplete }: Props) {
 
   const handleFinish = () => {
     localStorage.setItem('gf_onboarding_complete', 'true');
-    // Also set old key for backward compat
     localStorage.setItem('cb_onboarding_complete', 'true');
     onComplete();
   };
@@ -79,12 +110,80 @@ export default function Onboarding({ onComplete }: Props) {
           </div>
         )}
 
-        {/* Step 1: Gemini Key */}
+        {/* Step 1: Screen Recording Permission */}
         {step === 1 && (
           <div className="animate-fade-in">
             <div className="flex items-center gap-2 mb-4">
               <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
-              <span className="text-[11px] text-slate-500 font-medium uppercase tracking-widest">Step 1 of 2</span>
+              <span className="text-[11px] text-slate-500 font-medium uppercase tracking-widest">Step 1 of 3</span>
+            </div>
+
+            <h2 className="text-[24px] font-bold text-white tracking-tight mb-2">
+              Screen Recording
+            </h2>
+            <p className="text-[13px] text-slate-400 leading-relaxed mb-6 max-w-[360px]">
+              Goldfish needs screen recording access to see what you're working on. This is how it builds your memory — everything stays local, nothing is sent anywhere.
+            </p>
+
+            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-5 mb-6">
+              {screenPermission ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck size={20} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] text-white font-medium">Permission granted</p>
+                    <p className="text-[11px] text-slate-500">Goldfish can see your screen</p>
+                  </div>
+                </div>
+              ) : permissionRequested ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center flex-shrink-0">
+                    <RefreshCw size={18} className="text-amber-400 animate-spin" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] text-white font-medium">Waiting for permission...</p>
+                    <p className="text-[12px] text-slate-400 leading-relaxed mt-1">
+                      Toggle <span className="text-white font-medium">Goldfish</span> on in the System Settings window that just opened, then come back here.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
+                    <Monitor size={20} className="text-slate-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[14px] text-white font-medium">Screen recording access</p>
+                    <p className="text-[11px] text-slate-500">macOS will ask you to allow this</p>
+                  </div>
+                  <button
+                    onClick={handleRequestPermission}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-[12px] font-medium text-white cursor-pointer transition-colors duration-150 hover:from-amber-400 hover:to-orange-500 flex-shrink-0"
+                  >
+                    Allow
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <button onClick={() => setStep(0)} className={ghostBtn}>
+                Back
+              </button>
+              <button onClick={() => setStep(2)} className={primaryBtn}>
+                {screenPermission ? 'Continue' : 'Skip for now'} <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Gemini Key */}
+        {step === 2 && (
+          <div className="animate-fade-in">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
+              <span className="text-[11px] text-slate-500 font-medium uppercase tracking-widest">Step 2 of 3</span>
             </div>
 
             <h2 className="text-[24px] font-bold text-white tracking-tight mb-2">
@@ -116,7 +215,7 @@ export default function Onboarding({ onComplete }: Props) {
             </div>
 
             <div className="flex items-center justify-between">
-              <button onClick={() => setStep(2)} className={ghostBtn}>
+              <button onClick={() => setStep(3)} className={ghostBtn}>
                 Skip for now
               </button>
               <button onClick={handleSaveKey} className={primaryBtn}>
@@ -126,12 +225,12 @@ export default function Onboarding({ onComplete }: Props) {
           </div>
         )}
 
-        {/* Step 2: Connect AI Tools */}
-        {step === 2 && (
+        {/* Step 3: Connect AI Tools */}
+        {step === 3 && (
           <div className="animate-fade-in">
             <div className="flex items-center gap-2 mb-4">
-              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
-              <span className="text-[11px] text-slate-500 font-medium uppercase tracking-widest">Step 2 of 2</span>
+              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
+              <span className="text-[11px] text-slate-500 font-medium uppercase tracking-widest">Step 3 of 3</span>
             </div>
 
             <h2 className="text-[24px] font-bold text-white tracking-tight mb-2">
@@ -186,7 +285,7 @@ export default function Onboarding({ onComplete }: Props) {
             </div>
 
             <div className="flex items-center justify-between">
-              <button onClick={() => setStep(1)} className={ghostBtn}>
+              <button onClick={() => setStep(2)} className={ghostBtn}>
                 Back
               </button>
               <button onClick={handleFinish} className={primaryBtn}>
