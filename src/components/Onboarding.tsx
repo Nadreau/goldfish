@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, ExternalLink, ChevronRight, Link2, CheckCircle, RefreshCw, Monitor, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, ExternalLink, ChevronRight, Link2, CheckCircle, RefreshCw, Monitor, ShieldCheck, Settings } from 'lucide-react';
 import { detectAiTools, connectAiTool, checkCapturePermission, requestCapturePermission, type AiToolStatus } from '../lib/api';
 
 const TOOL_META: Record<string, { color: string; gradient: string; letter: string }> = {
@@ -14,57 +14,37 @@ interface Props {
 }
 
 export default function Onboarding({ onComplete }: Props) {
-  const [step, setStep] = useState(0);
+  // Resume from saved step if the app was restarted by macOS (e.g. after toggling screen recording)
+  const [step, setStep] = useState(() => {
+    const saved = localStorage.getItem('gf_onboarding_step');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const [geminiKey, setGeminiKey] = useState('');
   const [keyVisible, setKeyVisible] = useState(false);
   const [tools, setTools] = useState<AiToolStatus[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [screenPermission, setScreenPermission] = useState<boolean | null>(null);
-  const [permissionRequested, setPermissionRequested] = useState(false);
+
+  // Save step to localStorage so we resume after macOS restarts the app
+  useEffect(() => {
+    if (step > 0) {
+      localStorage.setItem('gf_onboarding_step', String(step));
+    }
+  }, [step]);
 
   useEffect(() => {
     detectAiTools().then(setTools).catch(() => {});
   }, []);
 
-  // Check screen permission when we land on step 1
-  // Also check on mount so it's ready before user gets there
+  // Check screen permission on mount — if already granted, show green checkmark immediately
   useEffect(() => {
     checkCapturePermission().then(setScreenPermission);
   }, []);
 
-  useEffect(() => {
-    if (step === 1) {
-      checkCapturePermission().then(setScreenPermission);
-    }
-  }, [step]);
-
-  // Poll for permission after requesting it (user has to toggle it in System Settings)
-  useEffect(() => {
-    if (step === 1 && permissionRequested && !screenPermission) {
-      const interval = setInterval(() => {
-        checkCapturePermission().then(granted => {
-          if (granted) {
-            setScreenPermission(true);
-            clearInterval(interval);
-          }
-        });
-      }, 1500);
-      return () => clearInterval(interval);
-    }
-  }, [step, permissionRequested, screenPermission]);
-
-  const handleRequestPermission = async () => {
-    // Check first — might already be granted from a previous install
-    const alreadyGranted = await checkCapturePermission();
-    if (alreadyGranted) {
-      setScreenPermission(true);
-      return;
-    }
-    setPermissionRequested(true);
+  const handleOpenSettings = async () => {
+    // Save step before macOS potentially restarts the app
+    localStorage.setItem('gf_onboarding_step', '1');
     await requestCapturePermission();
-    // Check again in case it resolved immediately
-    const granted = await checkCapturePermission();
-    setScreenPermission(granted);
   };
 
   const handleSaveKey = () => {
@@ -87,6 +67,7 @@ export default function Onboarding({ onComplete }: Props) {
   const handleFinish = () => {
     localStorage.setItem('gf_onboarding_complete', 'true');
     localStorage.setItem('cb_onboarding_complete', 'true');
+    localStorage.removeItem('gf_onboarding_step');
     onComplete();
   };
 
@@ -147,44 +128,27 @@ export default function Onboarding({ onComplete }: Props) {
                     <p className="text-[11px] text-slate-500">Goldfish can see your screen</p>
                   </div>
                 </div>
-              ) : permissionRequested ? (
+              ) : (
                 <div>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center flex-shrink-0">
-                      <RefreshCw size={18} className="text-amber-400 animate-spin" />
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
+                      <Monitor size={20} className="text-slate-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-[14px] text-white font-medium">Waiting for permission...</p>
-                      <p className="text-[12px] text-slate-400 leading-relaxed mt-1">
-                        Find <span className="text-white font-medium">Goldfish</span> in the list and toggle it on.
-                      </p>
+                      <p className="text-[14px] text-white font-medium">Screen recording access</p>
+                      <p className="text-[11px] text-slate-500">Make sure Goldfish is toggled on in System Settings</p>
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
-                    Already see it toggled on? Turn it <span className="text-slate-300">off then on again</span> — macOS needs a refresh after reinstalling.
+                  <button
+                    onClick={handleOpenSettings}
+                    className="mt-4 w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[13px] font-medium text-slate-300 cursor-pointer transition-colors duration-150 hover:bg-white/[0.07] hover:text-white"
+                  >
+                    <Settings size={14} />
+                    Open System Settings
+                  </button>
+                  <p className="text-[11px] text-slate-500 mt-3 text-center leading-relaxed">
+                    macOS may restart Goldfish after you toggle the setting — that's normal, you'll pick up right here.
                   </p>
-                  <button
-                    onClick={async () => { const g = await checkCapturePermission(); setScreenPermission(g); }}
-                    className="mt-3 text-[12px] text-amber-400/80 hover:text-amber-400 cursor-pointer transition-colors"
-                  >
-                    Check again manually
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
-                    <Monitor size={20} className="text-slate-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[14px] text-white font-medium">Screen recording access</p>
-                    <p className="text-[11px] text-slate-500">macOS will ask you to allow this</p>
-                  </div>
-                  <button
-                    onClick={handleRequestPermission}
-                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-[12px] font-medium text-white cursor-pointer transition-colors duration-150 hover:from-amber-400 hover:to-orange-500 flex-shrink-0"
-                  >
-                    Allow
-                  </button>
                 </div>
               )}
             </div>
@@ -194,7 +158,7 @@ export default function Onboarding({ onComplete }: Props) {
                 Back
               </button>
               <button onClick={() => setStep(2)} className={primaryBtn}>
-                {screenPermission ? 'Continue' : 'Skip for now'} <ChevronRight size={16} />
+                Continue <ChevronRight size={16} />
               </button>
             </div>
           </div>
