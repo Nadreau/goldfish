@@ -27,6 +27,11 @@ export default function Onboarding({ onComplete }: Props) {
   }, []);
 
   // Check screen permission when we land on step 1
+  // Also check on mount so it's ready before user gets there
+  useEffect(() => {
+    checkCapturePermission().then(setScreenPermission);
+  }, []);
+
   useEffect(() => {
     if (step === 1) {
       checkCapturePermission().then(setScreenPermission);
@@ -49,9 +54,15 @@ export default function Onboarding({ onComplete }: Props) {
   }, [step, permissionRequested, screenPermission]);
 
   const handleRequestPermission = async () => {
+    // Check first — might already be granted from a previous install
+    const alreadyGranted = await checkCapturePermission();
+    if (alreadyGranted) {
+      setScreenPermission(true);
+      return;
+    }
     setPermissionRequested(true);
     await requestCapturePermission();
-    // Check immediately in case it was already granted
+    // Check again in case it resolved immediately
     const granted = await checkCapturePermission();
     setScreenPermission(granted);
   };
