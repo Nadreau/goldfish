@@ -21,9 +21,10 @@ import { z } from 'zod';
 import Database from 'better-sqlite3';
 import { homedir, platform } from 'os';
 import { join, dirname } from 'path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLI — setup, --help, --version
@@ -167,6 +168,95 @@ const GOLDFISH_MCP_ENTRY = {
   args: ['-y', 'goldfish-mcp'],
 };
 
+const GITHUB_REPO = 'Nadreau/goldfish';
+const APP_PATH = '/Applications/Goldfish.app';
+
+/** Check if the Goldfish desktop app is installed */
+function isAppInstalled(): boolean {
+  return existsSync(APP_PATH);
+}
+
+/** Download and install Goldfish.app from the latest GitHub Release */
+async function installApp(): Promise<boolean> {
+  if (platform() !== 'darwin') {
+    console.log(`  ${c.yellow}⚠  Auto-install is only supported on macOS.${c.reset}`);
+    console.log(`  ${c.dim}Download manually from https://github.com/${GITHUB_REPO}/releases${c.reset}`);
+    return false;
+  }
+
+  try {
+    // Get latest release DMG URL from GitHub API
+    process.stdout.write(`  ${c.dim}Finding latest release...${c.reset}`);
+    const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+    const releaseJson = execSync(`curl -sL "${apiUrl}"`, { encoding: 'utf-8' });
+    const release = JSON.parse(releaseJson);
+
+    const dmgAsset = release.assets?.find((a: any) => a.name.endsWith('.dmg'));
+    if (!dmgAsset) {
+      console.log(` ${c.red}✗${c.reset}`);
+      console.log(`  ${c.red}No DMG found in latest release.${c.reset}`);
+      return false;
+    }
+    console.log(` ${c.green}✓${c.reset} ${c.dim}${release.tag_name}${c.reset}`);
+
+    // Download DMG
+    const tmpDmg = '/tmp/Goldfish.dmg';
+    console.log(`  ${c.dim}Downloading ${dmgAsset.name} (${(dmgAsset.size / 1024 / 1024).toFixed(1)} MB)...${c.reset}`);
+    execSync(`curl -sL -o "${tmpDmg}" "${dmgAsset.browser_download_url}"`, { stdio: 'inherit' });
+
+    // Mount DMG
+    process.stdout.write(`  ${c.dim}Installing...${c.reset}`);
+    const mountOutput = execSync(`hdiutil attach "${tmpDmg}" -nobrowse -quiet 2>&1`, { encoding: 'utf-8' });
+
+    // Find mount point
+    const mountLine = mountOutput.trim().split('\n').pop() || '';
+    const mountPoint = mountLine.split('\t').pop()?.trim();
+
+    if (!mountPoint) {
+      // Try finding it by convention
+      const fallbackMount = '/Volumes/Goldfish';
+      if (!existsSync(fallbackMount)) {
+        console.log(` ${c.red}✗${c.reset}`);
+        console.log(`  ${c.red}Could not find mounted DMG volume.${c.reset}`);
+        execSync(`hdiutil detach "${mountPoint || fallbackMount}" -quiet 2>/dev/null || true`);
+        return false;
+      }
+    }
+
+    const volumePath = mountPoint || '/Volumes/Goldfish';
+    const appInDmg = join(volumePath, 'Goldfish.app');
+
+    if (!existsSync(appInDmg)) {
+      console.log(` ${c.red}✗${c.reset}`);
+      console.log(`  ${c.red}Goldfish.app not found in DMG.${c.reset}`);
+      execSync(`hdiutil detach "${volumePath}" -quiet 2>/dev/null || true`);
+      return false;
+    }
+
+    // Copy to Applications
+    execSync(`cp -R "${appInDmg}" "${APP_PATH}"`);
+
+    // Unmount DMG
+    execSync(`hdiutil detach "${volumePath}" -quiet 2>/dev/null || true`);
+
+    // Clean up temp file
+    try { unlinkSync(tmpDmg); } catch { /* ignore */ }
+
+    // Remove quarantine flag
+    execSync(`xattr -cr "${APP_PATH}" 2>/dev/null || true`);
+
+    console.log(` ${c.green}✓${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset} Goldfish installed to ${c.dim}/Applications/Goldfish.app${c.reset}`);
+
+    return true;
+  } catch (err: any) {
+    console.log();
+    console.log(`  ${c.red}Install failed: ${err.message}${c.reset}`);
+    console.log(`  ${c.dim}Download manually from https://github.com/${GITHUB_REPO}/releases${c.reset}`);
+    return false;
+  }
+}
+
 function connectTool(tool: ToolConfig): boolean {
   if (tool.format === 'skip') return false;
 
@@ -216,16 +306,42 @@ async function runSetup(autoYes: boolean): Promise<void> {
   console.log(`  ${c.dim}Connect your AI tools to your screen memory${c.reset}`);
   console.log();
 
+  // ── Check app installation ──
+  if (!isAppInstalled()) {
+    console.log(`  ${c.yellow}⚠  Goldfish app not found in /Applications${c.reset}`);
+    console.log();
+
+    const shouldInstall = autoYes || await confirm(`  ${c.bold}Download and install Goldfish? ${c.dim}(Y/n)${c.reset} `);
+    console.log();
+
+    if (shouldInstall) {
+      const installed = await installApp();
+      if (installed) {
+        console.log();
+        // Launch the app
+        process.stdout.write(`  ${c.dim}Launching Goldfish...${c.reset}`);
+        try {
+          execSync(`open "${APP_PATH}"`);
+          console.log(` ${c.green}✓${c.reset}`);
+        } catch {
+          console.log(` ${c.dim}(open manually from Applications)${c.reset}`);
+        }
+        console.log();
+      }
+    } else {
+      console.log(`  ${c.dim}Skipped. Download later from https://github.com/${GITHUB_REPO}/releases${c.reset}`);
+      console.log();
+    }
+  } else {
+    console.log(`  ${c.green}✓${c.reset} Goldfish app installed at ${c.dim}${APP_PATH}${c.reset}`);
+  }
+
   // ── Check database ──
   if (!existsSync(dbPath)) {
-    console.log(`  ${c.yellow}\u26A0  Goldfish desktop app hasn't been run yet.${c.reset}`);
-    console.log(`  ${c.dim}Install it first from ${c.cyan}https://github.com/Nadreau/goldfish${c.reset}`);
-    console.log();
-    console.log(`  ${c.dim}Setup will still configure your AI tools so they're ready${c.reset}`);
-    console.log(`  ${c.dim}when you install the desktop app.${c.reset}`);
+    console.log(`  ${c.dim}Run the app once to start capturing — the database will be created automatically.${c.reset}`);
     console.log();
   } else {
-    console.log(`  ${c.green}\u2713${c.reset} Goldfish database found at ${c.dim}${dbPath}${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset} Goldfish database found at ${c.dim}${dbPath}${c.reset}`);
     console.log();
   }
 
