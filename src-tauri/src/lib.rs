@@ -1369,23 +1369,19 @@ fn check_capture_permission() -> bool {
     capture::check_screen_permission()
 }
 
-/// Request screen recording permission — opens System Settings directly.
-/// We intentionally do NOT call CGRequestScreenCaptureAccess() here because
-/// it adds a stale entry to the permission list that confuses users.
-/// Just open the Settings pane and let macOS handle it properly.
+/// Request screen recording permission.
+/// CGRequestScreenCaptureAccess() registers the app with macOS and shows
+/// a system dialog directing the user to System Settings.
 #[tauri::command]
 fn request_capture_permission() -> bool {
     #[cfg(target_os = "macos")]
     {
-        // Check if already granted — no need to open Settings
         if capture::check_screen_permission() {
             return true;
         }
-        // Open System Settings to Screen Recording pane directly
-        let _ = std::process::Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
-            .spawn();
-        false
+        // Register with macOS — this adds the app to Screen Recording in System Settings
+        // and shows a native dialog on first call for this binary
+        capture::request_screen_permission()
     }
     #[cfg(not(target_os = "macos"))]
     {
