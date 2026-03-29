@@ -163,8 +163,25 @@ function statusLabel(status: ToolStatus): string {
   }
 }
 
+/** Find full path to npx so GUI-launched processes (Claude Desktop) can resolve it */
+function findNpxPath(): string {
+  const candidates = [
+    '/opt/homebrew/bin/npx',  // Apple Silicon Homebrew
+    '/usr/local/bin/npx',     // Intel Homebrew / global npm
+    '/usr/bin/npx',
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  try {
+    const resolved = execSync('which npx', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+    if (resolved) return resolved;
+  } catch { /* ignore */ }
+  return 'npx'; // last resort
+}
+
 const GOLDFISH_MCP_ENTRY = {
-  command: 'npx',
+  command: findNpxPath(),
   args: ['-y', 'goldfish-mcp'],
 };
 
@@ -362,6 +379,47 @@ async function runSetup(autoYes: boolean): Promise<void> {
 
   if (existsSync(dbPath)) {
     console.log(`  ${c.green}✓${c.reset} Screen memory active`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Step 2: Ensure Tesseract is installed (required for OCR)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  if (platform() === 'darwin') {
+    const tesseractInstalled = (() => {
+      const candidates = ['/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract'];
+      if (candidates.some(p => existsSync(p))) return true;
+      try { execSync('which tesseract', { encoding: 'utf-8', stdio: 'pipe' }); return true; } catch { return false; }
+    })();
+
+    if (tesseractInstalled) {
+      console.log(`  ${c.green}✓${c.reset} Tesseract (OCR) ready`);
+    } else {
+      console.log();
+      console.log(`  ${c.yellow}⚠${c.reset}  Tesseract not found — Goldfish needs it to read your screen`);
+
+      const brewPath = existsSync('/opt/homebrew/bin/brew') ? '/opt/homebrew/bin/brew'
+                     : existsSync('/usr/local/bin/brew') ? '/usr/local/bin/brew' : null;
+
+      if (!brewPath) {
+        console.log(`  ${c.dim}Install Homebrew first (https://brew.sh), then run: ${c.cyan}brew install tesseract${c.reset}`);
+      } else {
+        const shouldInstall = autoYes || await confirm(`  Install tesseract via Homebrew? ${c.dim}(Y/n)${c.reset} `);
+        console.log();
+        if (shouldInstall) {
+          console.log(`  ${c.dim}Running: brew install tesseract${c.reset}`);
+          try {
+            execSync(`${brewPath} install tesseract`, { stdio: 'inherit' });
+            console.log(`  ${c.green}✓${c.reset} Tesseract installed`);
+          } catch {
+            console.log(`  ${c.yellow}!${c.reset} Install failed — run ${c.cyan}brew install tesseract${c.reset} manually`);
+          }
+        } else {
+          console.log(`  ${c.dim}Run ${c.cyan}brew install tesseract${c.dim} when ready.${c.reset}`);
+        }
+      }
+      console.log();
+    }
   }
 
   console.log();

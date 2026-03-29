@@ -1648,10 +1648,38 @@ struct AiToolStatus {
     config_path: String,
 }
 
+/// Find the full path to npx — needed because GUI apps (Claude Desktop) launch
+/// with a restricted PATH that excludes NVM/Homebrew, so plain "npx" won't resolve.
+fn find_npx_path() -> String {
+    // Check common install locations first (fastest)
+    let candidates = [
+        "/opt/homebrew/bin/npx",  // Apple Silicon Homebrew
+        "/usr/local/bin/npx",     // Intel Homebrew / global npm
+        "/usr/bin/npx",
+    ];
+    for path in &candidates {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+    // Fall back to `which npx` (works if user is on a non-standard path)
+    if let Ok(output) = std::process::Command::new("which").arg("npx").output() {
+        if output.status.success() {
+            let resolved = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !resolved.is_empty() {
+                return resolved;
+            }
+        }
+    }
+    // Last resort — just "npx" and hope the PATH is set
+    "npx".to_string()
+}
+
 /// Returns the MCP server entry that gets written to each tool's config
 fn mcp_server_entry() -> serde_json::Value {
+    let npx = find_npx_path();
     serde_json::json!({
-        "command": "npx",
+        "command": npx,
         "args": ["-y", "goldfish-mcp"]
     })
 }
