@@ -1,6 +1,6 @@
 {
   "name": "goldfish-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Goldfish — your AI finally has a memory",
   "type": "module",
   "bin": {
@@ -37,10 +37,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Nadreau/contextbridge"
+    "url": "https://github.com/Nadreau/goldfish"
   },
   "author": "Niko Nadreau",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=18.0.0"
   }

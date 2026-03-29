@@ -2,10 +2,10 @@
 
 **Your AI finally has a memory.**
 
-[![Download](https://img.shields.io/badge/Download-macOS-blue)](https://github.com/Nadreau/contextbridge/releases/latest)
+[![Download](https://img.shields.io/badge/Download-macOS-blue)](https://github.com/Nadreau/goldfish/releases/latest)
 [![npm](https://img.shields.io/npm/v/goldfish-mcp)](https://www.npmjs.com/package/goldfish-mcp)
 [![Patent Pending](https://img.shields.io/badge/Patent-Pending-orange)](https://www.uspto.gov)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](LICENSE)
 
 Goldfish captures your desktop activity and gives any AI assistant persistent memory. Everything stays local on your machine.
 
@@ -16,7 +16,7 @@ Goldfish captures your desktop activity and gives any AI assistant persistent me
 
 ## Download
 
-**[Download Goldfish for macOS →](https://github.com/Nadreau/contextbridge/releases/latest)**
+**[Download Goldfish for macOS →](https://github.com/Nadreau/goldfish/releases/latest)**
 
 > **macOS will block the app on first launch** since it isn't code-signed yet. After installing, run this in Terminal:
 > ```bash
@@ -123,8 +123,8 @@ Edit `~/.cursor/mcp.json`:
 ## Development
 
 ```bash
-git clone https://github.com/Nadreau/contextbridge.git
-cd contextbridge
+git clone https://github.com/Nadreau/goldfish.git
+cd goldfish
 npm install
 
 # Frontend only (browser)
@@ -145,7 +145,7 @@ This project implements technology described in U.S. Provisional Patent Applicat
 
 ## License
 
-MIT © 2025-2026 Nicholas Nadreau
+Apache 2.0 © 2025-2026 Nicholas Nadreau — see [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
 
 ---
 
