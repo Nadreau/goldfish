@@ -148,16 +148,27 @@ export default function Onboarding({ onComplete }: Props) {
                   </div>
                 </div>
               ) : permissionRequested ? (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center flex-shrink-0">
-                    <RefreshCw size={18} className="text-amber-400 animate-spin" />
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center flex-shrink-0">
+                      <RefreshCw size={18} className="text-amber-400 animate-spin" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[14px] text-white font-medium">Waiting for permission...</p>
+                      <p className="text-[12px] text-slate-400 leading-relaxed mt-1">
+                        Find <span className="text-white font-medium">Goldfish</span> in the list and toggle it on.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[14px] text-white font-medium">Waiting for permission...</p>
-                    <p className="text-[12px] text-slate-400 leading-relaxed mt-1">
-                      Toggle <span className="text-white font-medium">Goldfish</span> on in the System Settings window that just opened, then come back here.
-                    </p>
-                  </div>
+                  <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
+                    Already see it toggled on? Turn it <span className="text-slate-300">off then on again</span> — macOS needs a refresh after reinstalling.
+                  </p>
+                  <button
+                    onClick={async () => { const g = await checkCapturePermission(); setScreenPermission(g); }}
+                    className="mt-3 text-[12px] text-amber-400/80 hover:text-amber-400 cursor-pointer transition-colors"
+                  >
+                    Check again manually
+                  </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
