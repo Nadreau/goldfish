@@ -45,8 +45,11 @@ jobs:
 
             1. Download the `.dmg` file below
             2. Open the DMG and drag Goldfish to Applications
-            3. Right-click Goldfish in Applications → Open (required on first launch since the app isn't signed yet)
-            4. Follow the onboarding to connect your AI tools
+            3. **Important:** Run this in Terminal to unblock the app (required once since it's unsigned):
+               ```bash
+               xattr -cr /Applications/Goldfish.app
+               ```
+            4. Open Goldfish and follow the onboarding to connect your AI tools
 
             ### Connect your AI tools via CLI
 

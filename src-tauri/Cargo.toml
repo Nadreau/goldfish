@@ -1,6 +1,6 @@
 [package]
 name = "goldfish"
-version = "0.1.0"
+version = "0.1.5"
 description = "Goldfish — Your AI finally has a memory"
 authors = ["Niko Nadreau"]
 license = "Apache-2.0"
