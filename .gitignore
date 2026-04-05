@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Rust/Tauri build artifacts
+src-tauri/target/
+
+# Environment and secrets
+.env
+.env.*
+*.env
+*.pem
+*.p12
+*.pfx
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# OS artifacts
+Thumbs.db
