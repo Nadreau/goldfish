@@ -120,6 +120,22 @@ Edit `~/.cursor/mcp.json`:
 ```
 </details>
 
+<details>
+<summary>Windsurf</summary>
+
+Edit `~/.codeium/windsurf/mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "goldfish": {
+      "command": "npx",
+      "args": ["-y", "goldfish-mcp"]
+    }
+  }
+}
+```
+</details>
+
 ## Development
 
 ```bash

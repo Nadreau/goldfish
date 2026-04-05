@@ -34,8 +34,9 @@ src-tauri/target/
 *.p12
 *.pfx
 
-# Claude Code worktrees
+# Claude Code worktrees and session files
 .claude/worktrees/
+.claude/launch.json
 
 # OS artifacts
 Thumbs.db
