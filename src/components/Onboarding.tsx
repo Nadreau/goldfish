@@ -261,6 +261,17 @@ export default function Onboarding({ onComplete }: Props) {
               )}
             </div>
 
+            {tools.some(t => t.connected) && (
+              <div className="rounded-2xl bg-amber-500/[0.06] border border-amber-500/15 p-4 mb-6">
+                <p className="text-[13px] text-amber-300/90 font-medium mb-1.5">
+                  Quick tip to activate your memory
+                </p>
+                <p className="text-[12px] text-slate-400 leading-relaxed">
+                  In your first message to Claude, mention something you were recently working on — Goldfish will kick in automatically from there. Once it fires once, your AI will keep checking it.
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <button onClick={() => setStep(2)} className={ghostBtn}>
                 Back
