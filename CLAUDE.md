@@ -3,8 +3,8 @@
 ## What This Is
 Universal AI memory system — captures desktop context and makes it available to any AI assistant.
 Your AI finally has a memory.
-**Patent:** U.S. Provisional Patent Application No. 63/950,192 (filed Dec 29, 2025)
-**Non-provisional deadline:** December 29, 2026
+**Patent:** U.S. Non-Provisional Patent Application filed April 12, 2026 (claiming priority to Provisional No. 63/950,192, filed Dec 29, 2025)
+**Status:** Patent Pending — 20 claims (3 independent + 17 dependent)
 
 ## Tech Stack
 - **Frontend:** React 19 + TypeScript + Tailwind CSS 4

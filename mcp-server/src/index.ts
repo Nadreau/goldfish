@@ -422,6 +422,44 @@ async function runSetup(autoYes: boolean): Promise<void> {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Step 3: Inject Goldfish instructions into CLAUDE.md (Claude Code only)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const claudeMdPath = join(home, '.claude', 'CLAUDE.md');
+  const goldfishInstructions = `
+## Goldfish (AI Memory)
+- Goldfish is running and captures everything on this user's screen
+- The Goldfish MCP server gives you live access to their screen memory via \`goldfish_recall\`, \`goldfish_context\`, and \`goldfish_summary\`
+- **Always call \`goldfish_context\` at the start of conversations** to understand what the user is currently working on
+- **Always call \`goldfish_recall\` before asking the user for context** — if they mention a project, file, person, or past work, search Goldfish first
+- The user expects you to already know their context from Goldfish — don't ask them to explain things it already captured
+`;
+
+  const goldfishMarker = '## Goldfish (AI Memory)';
+
+  if (existsSync(claudeMdPath)) {
+    const existing = readFileSync(claudeMdPath, 'utf-8');
+    if (!existing.includes(goldfishMarker)) {
+      const shouldInject = autoYes || await confirm(`  Add Goldfish instructions to your CLAUDE.md? ${c.dim}(Y/n)${c.reset} `);
+      if (shouldInject) {
+        writeFileSync(claudeMdPath, existing.trimEnd() + '\n' + goldfishInstructions, 'utf-8');
+        console.log(`  ${c.green}✓${c.reset} Added Goldfish instructions to ~/.claude/CLAUDE.md`);
+      }
+    } else {
+      console.log(`  ${c.green}✓${c.reset} CLAUDE.md already has Goldfish instructions`);
+    }
+  } else {
+    // Create ~/.claude dir if needed, write fresh CLAUDE.md
+    const claudeDir = join(home, '.claude');
+    if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+    const shouldCreate = autoYes || await confirm(`  Create CLAUDE.md with Goldfish instructions? ${c.dim}(Y/n)${c.reset} `);
+    if (shouldCreate) {
+      writeFileSync(claudeMdPath, goldfishInstructions.trim() + '\n', 'utf-8');
+      console.log(`  ${c.green}✓${c.reset} Created ~/.claude/CLAUDE.md with Goldfish instructions`);
+    }
+  }
+
   console.log();
   console.log(`  ${c.green}${c.bold}\u{1F420} You're good to go!${c.reset}`);
   console.log(`  ${c.dim}Complete the setup in the Goldfish app — it handles everything from here.${c.reset}`);
