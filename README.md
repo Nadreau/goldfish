@@ -9,6 +9,8 @@
 
 Goldfish captures your desktop activity and gives any AI assistant persistent memory. Everything stays local on your machine.
 
+> **macOS only** right now. Windows and Linux are planned — [star the repo](https://github.com/Nadreau/goldfish) to get notified.
+
 - **Captures context** from your screen via OCR — knows what you're working on
 - **Connects to any MCP-compatible AI** — Claude Desktop, Claude Code, Cursor, Windsurf
 - **Stays private** — all data in a local SQLite database, never leaves your machine
