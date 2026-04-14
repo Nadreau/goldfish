@@ -163,14 +163,32 @@ pub struct DbConnection(pub Mutex<Connection>);
 
 fn init_db() -> Result<Connection, rusqlite::Error> {
     let db_path = get_db_path();
-    
+
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    
+
     let conn = Connection::open(&db_path)?;
-    
+
     conn.pragma_update(None, "journal_mode", "WAL")?;
+
+    // Lock down file permissions to owner-only (600) on Unix systems.
+    // The user's memory database contains OCR of everything on their screen —
+    // other users on the same machine should not be able to read it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for suffix in &["", "-wal", "-shm"] {
+            let path = if suffix.is_empty() {
+                db_path.clone()
+            } else {
+                PathBuf::from(format!("{}{}", db_path.display(), suffix))
+            };
+            if path.exists() {
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
     
     conn.execute(
         "CREATE TABLE IF NOT EXISTS memories (
@@ -907,6 +925,63 @@ fn smart_capture(
     
     // Skip if unknown app or system UI
     if window.app_name == "Unknown" || window.app_name == "loginwindow" || window.app_name == "ScreenSaverEngine" {
+        return CaptureResult {
+            success: true,
+            changed: false,
+            summary: String::new(),
+            saved_id: None,
+            error: None,
+        };
+    }
+
+    // Privacy blocklist: never capture from apps that show secrets on screen.
+    // Password managers, banking apps, 2FA tools, etc. — even the app name in
+    // a memory log is too much information.
+    let app_name_lower = window.app_name.to_lowercase();
+    const SENSITIVE_APPS: &[&str] = &[
+        "1password",
+        "bitwarden",
+        "dashlane",
+        "lastpass",
+        "keychain access",
+        "keepassxc",
+        "nordpass",
+        "enpass",
+        "proton pass",
+        "authy",
+        "google authenticator",
+        "duo mobile",
+        "microsoft authenticator",
+        "banking",
+        "venmo",
+        "zelle",
+    ];
+    if SENSITIVE_APPS.iter().any(|a| app_name_lower.contains(a)) {
+        return CaptureResult {
+            success: true,
+            changed: false,
+            summary: String::new(),
+            saved_id: None,
+            error: None,
+        };
+    }
+
+    // Also skip captures where window title contains sensitive keywords
+    let title_lower = window.window_title.to_lowercase();
+    const SENSITIVE_TITLE_KEYWORDS: &[&str] = &[
+        "password",
+        "passphrase",
+        "private key",
+        "secret key",
+        "api key",
+        "credit card",
+        "card number",
+        "social security",
+        "ssn",
+        "2fa",
+        "two-factor",
+    ];
+    if SENSITIVE_TITLE_KEYWORDS.iter().any(|kw| title_lower.contains(kw)) {
         return CaptureResult {
             success: true,
             changed: false,

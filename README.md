@@ -13,7 +13,7 @@ Goldfish captures your desktop activity and gives any AI assistant persistent me
 
 - **Captures context** from your screen via OCR — knows what you're working on
 - **Connects to any MCP-compatible AI** — Claude Desktop, Claude Code, Cursor, Windsurf
-- **Stays private** — all data in a local SQLite database, never leaves your machine
+- **Local-first** — your memory database lives on your machine. Optional Gemini enhancement (BYO API key) is available for richer scene analysis; skip it and everything stays offline.
 - **Works automatically** — your AI decides when to pull context, no copy-paste needed
 
 ## Download
