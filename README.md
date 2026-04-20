@@ -1,17 +1,16 @@
 # Goldfish
 
-**Your AI finally has a memory.**
+### Give your AI a photographic memory.
 
-[![Download](https://img.shields.io/badge/Download-macOS-blue)](https://github.com/Nadreau/goldfish/releases/latest)
+Stop explaining yourself to Claude, Cursor, or any AI tool. Goldfish captures everything you work on — files, conversations, browsing, code — and feeds it as context, automatically.
+
+[![Download](https://img.shields.io/badge/Download-macOS-f59e0b)](https://github.com/Nadreau/goldfish/releases/latest)
 [![npm](https://img.shields.io/npm/v/goldfish-mcp)](https://www.npmjs.com/package/goldfish-mcp)
-[![Patent Pending](https://img.shields.io/badge/Patent-Pending-orange)](https://www.uspto.gov)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](LICENSE)
-
-Goldfish captures your desktop activity and gives any AI assistant persistent memory. Everything stays local on your machine.
 
 > **macOS only** right now. Windows and Linux are planned — [star the repo](https://github.com/Nadreau/goldfish) to get notified.
 
-- **Captures context** from your screen via OCR — knows what you're working on
+- **Watches your screen** via local OCR — knows what you're working on
+- **Remembers everything** you look at, read, write, or edit
 - **Connects to any MCP-compatible AI** — Claude Desktop, Claude Code, Cursor, Windsurf
 - **Local-first** — your memory database lives on your machine. Optional Gemini enhancement (BYO API key) is available for richer scene analysis; skip it and everything stays offline.
 - **Works automatically** — your AI decides when to pull context, no copy-paste needed
