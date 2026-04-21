@@ -458,30 +458,116 @@ function isUiJunk(line: string): boolean {
   // Very short with less than 3 alpha chars
   if (alphaOnly.length < 3) return true;
 
-  // Pure menu bar combos: "Edit View", "File Edit View Help", etc.
-  const menuWords = /^(File|Edit|View|Insert|Format|Table|Organize|Arrange|Share|Window|Help|History|Bookmarks|Profiles|Tab|Go|Navigate|Run|Debug|Terminal|Extensions|Source Control)$/i;
-  const words = l.split(/\s+/);
-  if (words.length <= 5 && words.every(w => menuWords.test(w))) return true;
+  // Menu bar words (expanded — these appear in macOS menu bar OCR)
+  const menuWords = /^(File|Edit|View|Insert|Format|Table|Organize|Arrange|Share|Window|Help|History|Bookmarks|Profiles|Tab|Go|Navigate|Run|Debug|Terminal|Extensions|Source Control|Chrome|Safari|Firefox|Arc|Edge|Build|Product|Apple|System|Preferences|Services|Select|Selection|Search|Tools|Actions|Account)$/i;
+  const words = l.split(/\s+/).filter(w => w.length > 0);
 
-  // Clock/date patterns
+  // If line is ALL menu words (regardless of count), it's junk.
+  // Catches "Chrome File Edit View History Bookmarks Profiles Tab Window Help" (10+ words).
+  if (words.length >= 2 && words.every(w => menuWords.test(w))) return true;
+
+  // If line starts with 4+ menu words and MOST of the line is menu words, it's junk (e.g. "Chrome File Edit View History Bookmarks gibberish ocr stuff")
+  const menuCount = words.filter(w => menuWords.test(w)).length;
+  if (words.length >= 4 && menuCount >= 4 && menuCount / words.length > 0.55) return true;
+
+  // Clock/date patterns (including "Mon Apr 13")
+  if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+[A-Z][a-z]{2}/i.test(l)) return true;
   if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s/i.test(l)) return true;
 
   // System UI text
-  if (/^(HIGH RISK|Preview|Scheduled|New session|\+ New|\.\.\.\s*\/)/i.test(l)) return true;
+  if (/^(HIGH RISK|Preview|Scheduled|New session|\+ New|\.\.\.\s*\/|Search|Apps|Dashboard)$/i.test(l)) return true;
 
-  // OCR garble detection: "* e• Q•UO * Q GI*J, Q" — macOS menu bar icons read as text
-  // Key signals: bullet dots (•·), lots of single-char "words", asterisks as separators
+  // URL bar / breadcrumb junk (e.g. "github.com/settings/security" on its own)
+  if (/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?\s*$/i.test(l) && l.length < 80) return true;
+
+  // OCR garble: "* e• Q•UO * Q GI*J, Q" — macOS menu bar icons read as text
   const symbolChars = (l.match(/[*•·°×÷±§†‡¶©®™{}()\[\]<>|\\\/~`^#@!]/g) || []).length;
-  if (symbolChars >= 3) return true;  // 3+ special symbols = almost certainly garble
+  if (symbolChars >= 3) return true;
 
-  // Mostly non-alpha (< 50% letters) = likely OCR noise, nav chrome, or system UI
+  // Mostly non-alpha (< 50% letters) = likely OCR noise
   if (alphaRatio < 0.5 && l.length > 5) return true;
 
-  // Dominated by single-char words: "* e Q U O * Q" etc.
+  // Dominated by single-char words
   const singleCharWords = words.filter(w => w.length === 1).length;
   if (words.length >= 3 && singleCharWords / words.length > 0.5) return true;
 
   return false;
+}
+
+/**
+ * Extract a clean, short title from app name + window title.
+ * Mirrors the Rust generate_smart_summary logic so the UI can produce
+ * LinkedIn-style clean labels like "Slack", "LinkedIn — Your Feed",
+ * "VS Code — api.ts" from raw OCR content.
+ */
+function smartTitleFromApp(app: string | null | undefined, windowTitle: string): string | undefined {
+  const appName = cleanSourceApp(app);
+  if (!appName) return undefined;
+  const appLower = appName.toLowerCase();
+  const titleClean = cleanOcrText(windowTitle || '').replace(/^\[.+?\]\s*/, '').trim();
+  const titleLower = titleClean.toLowerCase();
+
+  // Browsers — extract the site and page
+  if (/chrome|safari|firefox|arc|edge|brave|vivaldi/.test(appLower)) {
+    if (!titleClean || isUiJunk(titleClean)) return appName;
+    // Strip trailing " - Chrome" / " - Google Chrome" etc.
+    let t = titleClean.replace(/\s*[-—]\s*(Google\s+)?(Chrome|Safari|Firefox|Arc|Edge|Brave)(\s+Browser)?\s*$/i, '').trim();
+    if (titleLower.includes('gmail') || titleLower.includes('inbox')) return 'Gmail' + (t && t.length < 60 ? ` — ${t.split(' - ')[0]}` : '');
+    if (titleLower.includes('youtube')) {
+      const vid = t.replace(/\s*[-—]\s*YouTube.*$/i, '').trim();
+      return vid && vid.length < 70 ? `YouTube — ${vid}` : 'YouTube';
+    }
+    if (titleLower.includes('github')) {
+      const repo = t.replace(/\s*·\s*GitHub.*$/i, '').trim();
+      return repo && repo.length < 70 ? `GitHub — ${repo}` : 'GitHub';
+    }
+    if (titleLower.includes('slack')) return 'Slack';
+    if (titleLower.includes('discord')) return 'Discord';
+    if (titleLower.includes('notion')) {
+      const page = t.replace(/\s*[-—]\s*Notion.*$/i, '').trim();
+      return page && page.length < 70 ? `Notion — ${page}` : 'Notion';
+    }
+    if (titleLower.includes('linkedin')) return 'LinkedIn';
+    if (titleLower.includes('reddit')) {
+      const sub = t.match(/r\/[a-z0-9_]+/i)?.[0];
+      return sub ? `Reddit — ${sub}` : 'Reddit';
+    }
+    if (titleLower.includes('twitter') || titleLower.includes(' / x') || titleLower.includes('x.com')) return 'X / Twitter';
+    if (titleLower.includes('stack overflow')) return 'Stack Overflow';
+    if (titleLower.includes('google docs') || titleLower.includes('google sheets') || titleLower.includes('google slides')) {
+      const kind = titleLower.includes('sheets') ? 'Google Sheets' : titleLower.includes('slides') ? 'Google Slides' : 'Google Docs';
+      const name = t.split(' - ')[0]?.trim();
+      return name && name.length < 60 ? `${kind} — ${name}` : kind;
+    }
+    // Generic: use page title, capped
+    if (t && t.length >= 4 && t.length <= 80 && !isUiJunk(t)) return t;
+    return appName;
+  }
+
+  // Code editors
+  if (/vs code|cursor|xcode|sublime|atom|vim|nvim|zed|windsurf/.test(appLower)) {
+    const file = titleClean.split(/\s*[-—]\s*/)[0]?.trim();
+    if (file && !isUiJunk(file) && file.length < 60) return `${appName} — ${file}`;
+    return appName;
+  }
+
+  // Communication apps with channel/person
+  if (/slack|discord|messages|telegram|whatsapp|teams/.test(appLower)) {
+    const channel = titleClean.match(/#\S+/)?.[0] || titleClean.split(/\s*[-—]\s*/)[0]?.trim();
+    if (channel && !isUiJunk(channel) && channel.length < 50) return `${appName} — ${channel}`;
+    return appName;
+  }
+
+  // Terminal
+  if (/terminal|iterm|warp|alacritty/.test(appLower)) {
+    return appName;
+  }
+
+  // Default: app name + window title if it's meaningful
+  if (titleClean && !isUiJunk(titleClean) && titleClean.length < 60) {
+    return `${appName} — ${titleClean}`;
+  }
+  return appName;
 }
 
 /**
@@ -528,18 +614,18 @@ export function getMemoryPreview(memory: Memory): { title: string; detail?: stri
   // OCR / smart captures: "[AppName] Window Title\n\n---\nfull screen OCR text..."
   if (source === 'ocr-capture' || source === 'smart-capture') {
     const firstLine = (nonEmpty[0] || '').trim();
-    // Strip [AppName] prefix — the app badge already shows this
-    const bracketMatch = firstLine.match(/^\[.+?\]\s*(.+)/);
-    const rawTitle = cleanOcrText(bracketMatch ? bracketMatch[1] : firstLine);
+    const bracketMatch = firstLine.match(/^\[(.+?)\]\s*(.+)?/);
+    const appFromBracket = bracketMatch?.[1]?.trim();
+    const windowTitle = bracketMatch?.[2]?.trim() || '';
 
-    // The OCR body after --- starts with menu bar junk (File, Edit, View, Help, clock, etc.)
-    // We need to skip past all that and find the first meaningful line
+    // 1) Try the smart title generator (LinkedIn-style clean label)
+    const smart = smartTitleFromApp(memory.source_app || appFromBracket, windowTitle);
+
+    // Find a meaningful body line to use as a detail/subtitle
     const separatorIdx = content.indexOf('\n---\n');
     const bodyLines = separatorIdx > -1
       ? content.slice(separatorIdx + 5).split('\n').map(l => l.trim()).filter(Boolean)
       : [];
-
-    // Find a meaningful line: must be a real sentence/phrase, not menu bar junk or OCR garble.
     const meaningfulLine = bodyLines
       .map(l => cleanOcrText(l))
       .find(l => {
@@ -552,15 +638,23 @@ export function getMemoryPreview(memory: Memory): { title: string; detail?: stri
         return true;
       });
 
-    // If the window title is generic ("File", single short word, garble), use the meaningful body line instead
-    const isGenericTitle = !rawTitle || rawTitle.length < 4 || isUiJunk(rawTitle);
+    if (smart && !isUiJunk(smart)) {
+      return {
+        title: smart,
+        detail: meaningfulLine ? meaningfulLine.slice(0, 80) : undefined,
+      };
+    }
+
+    // 2) Fallback: use the window title if it's clean
+    const cleanedWindowTitle = cleanOcrText(windowTitle);
+    const isGenericTitle = !cleanedWindowTitle || cleanedWindowTitle.length < 4 || isUiJunk(cleanedWindowTitle);
 
     if (isGenericTitle && meaningfulLine) {
       return { title: meaningfulLine.slice(0, 80), detail: cleanSourceApp(memory.source_app) };
     }
 
     return {
-      title: isGenericTitle ? (cleanSourceApp(memory.source_app) || 'Screen Capture') : rawTitle,
+      title: isGenericTitle ? (cleanSourceApp(memory.source_app) || 'Screen Capture') : cleanedWindowTitle,
       detail: meaningfulLine ? meaningfulLine.slice(0, 80) : undefined,
     };
   }
