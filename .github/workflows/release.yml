@@ -35,6 +35,13 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri:build
 
+      - name: Ad-hoc codesign (reduces first-launch friction)
+        run: |
+          APP="src-tauri/target/release/bundle/macos/Goldfish.app"
+          if [ -d "$APP" ]; then
+            codesign --force --deep --sign - "$APP" || true
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -43,20 +50,31 @@ jobs:
           body: |
             ## Install Goldfish
 
-            1. Download the `.dmg` file below
-            2. Open the DMG and drag Goldfish to Applications
-            3. **Important:** Run this in Terminal to unblock the app (required once since it's unsigned):
+            **Easiest:** one Terminal command installs everything and handles the macOS unblock step for you.
+
+            ```bash
+            curl -fsSL https://nadreau.github.io/goldfish/install.sh | bash
+            ```
+
+            **Or download manually:**
+
+            1. Download the `.dmg` below
+            2. Open it and drag Goldfish to Applications
+            3. One-time unblock (since the app isn't Apple-signed yet):
                ```bash
                xattr -cr /Applications/Goldfish.app
                ```
-            4. Open Goldfish and follow the onboarding to connect your AI tools
+            4. Launch Goldfish — the onboarding connects your AI tools automatically
 
-            ### Connect your AI tools via CLI
+            ### Power users — connect extra AI tools from the CLI
 
             ```bash
             npx goldfish-mcp setup
             ```
 
             Auto-detects and configures Claude Desktop, Claude Code, Cursor, and Windsurf.
+
+            Learn more → [nadreau.github.io/goldfish](https://nadreau.github.io/goldfish)
           draft: false
-          prerelease: true
+          prerelease: false
+          make_latest: true

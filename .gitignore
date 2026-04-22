@@ -40,3 +40,14 @@ src-tauri/target/
 
 # OS artifacts
 Thumbs.db
+
+# Local planning / working files (not tracked)
+MEMORY.md
+CHANGES.md
+FIXES.md
+MORNING_UNVEIL.md
+OVERHAUL_COMPLETE.md
+REBUILD_PLAN.md
+launch-contextbridge.sh
+mcp-server/goldfish-mcp@*
+mcp-server/npm

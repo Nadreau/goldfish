@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goldfish — Give your AI a photographic memory</title>
+<meta name="description" content="Goldfish watches your Mac, remembers what you're working on, and feeds context to ChatGPT, Claude, Cursor — so you stop explaining yourself every chat.">
+<link rel="icon" type="image/png" href="icon.png">
+
+<!-- Open Graph / X preview -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Goldfish — Give your AI a photographic memory">
+<meta property="og:description" content="Stop explaining yourself to ChatGPT, Claude, and Cursor. Goldfish quietly remembers everything you work on — your Notion, your Figma, your tabs — and your AI just knows.">
+<meta property="og:image" content="https://nadreau.github.io/goldfish/og-image.png">
+<meta property="og:url" content="https://nadreau.github.io/goldfish">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Goldfish — Give your AI a photographic memory">
+<meta name="twitter:description" content="Stop explaining yourself to ChatGPT, Claude, and Cursor. Your AI just knows.">
+<meta name="twitter:image" content="https://nadreau.github.io/goldfish/og-image.png">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; font-family: 'Geist', sans-serif; background: #0a0a0a; color: white; }
+  .mono { font-family: 'Geist Mono', monospace; }
+  .gradient-text {
+    background: linear-gradient(180deg, #ffffff 0%, #d4d4d8 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .amber-glow { box-shadow: 0 0 60px -10px rgba(245, 158, 11, 0.5), 0 0 120px -30px rgba(245, 158, 11, 0.3); }
+  .hero-bg {
+    background:
+      radial-gradient(ellipse 900px 600px at 80% 40%, rgba(245,158,11,0.18) 0%, transparent 65%),
+      radial-gradient(ellipse 500px 400px at 20% 90%, rgba(245,158,11,0.05) 0%, transparent 60%);
+  }
+  .grid-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 85%);
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 85%);
+  }
+  .code-block {
+    position: relative;
+    background: #0d0d0d;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 18px 52px 18px 20px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 14px;
+    color: #e4e4e7;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .copy-btn {
+    position: absolute;
+    right: 8px; top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #a1a1aa;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Geist Mono', monospace;
+  }
+  .copy-btn:hover { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+  .copy-btn.copied { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.3); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 9999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    font-family: 'Geist Mono', monospace; font-size: 11px; color: #a1a1aa;
+  }
+  .dot-pulse { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* Bowl mascot */
+  .bowl-wrap { position: relative; width: 360px; height: 360px; }
+  .bowl-glow {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle, rgba(245,158,11,0.3) 0%, transparent 60%);
+    filter: blur(24px);
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ═══ HERO ═══ -->
+<section class="hero-bg relative overflow-hidden">
+  <div class="grid-overlay"></div>
+
+  <!-- Nav -->
+  <nav class="relative max-w-6xl mx-auto px-8 pt-8 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <img src="icon.png" class="w-9 h-9 rounded-lg" alt="Goldfish">
+      <span class="font-semibold text-lg">Goldfish</span>
+    </div>
+    <div class="flex items-center gap-6 text-sm text-zinc-400">
+      <a href="#how" class="hover:text-white transition">How it works</a>
+      <a href="#install" class="hover:text-white transition">Install</a>
+      <a href="https://github.com/Nadreau/goldfish" class="hover:text-white transition">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Hero content -->
+  <div class="relative max-w-6xl mx-auto px-8 py-20 grid md:grid-cols-5 gap-12 items-center">
+    <div class="md:col-span-3">
+      <span class="pill mb-6">
+        <span class="w-1.5 h-1.5 bg-amber-400 rounded-full dot-pulse"></span>
+        NEW · Free for Mac
+      </span>
+      <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.02] gradient-text mt-6 mb-6">
+        Give your AI<br/>a photographic<br/>memory.
+      </h1>
+      <p class="text-xl text-zinc-400 max-w-xl leading-relaxed mb-10">
+        Stop explaining yourself to ChatGPT, Claude, and Cursor. Goldfish quietly remembers everything you work on — your Notion, your Figma, your tabs — and your AI just knows.
+      </p>
+
+      <!-- Primary CTA: one-line install -->
+      <div class="mb-4">
+        <div class="mono text-[11px] text-zinc-500 uppercase tracking-widest mb-2">Install in one Terminal command</div>
+        <div class="code-block" id="installCmd">
+          <span><span class="text-zinc-500">$</span> curl -fsSL https://nadreau.github.io/goldfish/install.sh | bash</span>
+          <button class="copy-btn" onclick="copyCmd('curl -fsSL https://nadreau.github.io/goldfish/install.sh | bash', this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4 mt-6 flex-wrap">
+        <a href="https://github.com/Nadreau/goldfish/releases/latest" class="inline-flex items-center gap-2 px-5 py-3 bg-amber-500 text-zinc-950 rounded-lg font-semibold text-sm amber-glow hover:bg-amber-400 transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+          Download .dmg instead
+        </a>
+        <a href="https://github.com/Nadreau/goldfish" class="inline-flex items-center gap-2 px-5 py-3 bg-white/5 border border-white/10 rounded-lg text-sm font-medium text-zinc-200 hover:bg-white/10 transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.6.113.793-.26.793-.577v-2.234c-3.338.724-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+      </div>
+
+      <div class="flex items-center gap-4 mt-8 text-xs text-zinc-500 mono">
+        <span>✓ Runs on your Mac</span>
+        <span>✓ No account</span>
+        <span>✓ Free forever</span>
+      </div>
+    </div>
+
+    <!-- Mascot -->
+    <div class="md:col-span-2 flex justify-center">
+      <div class="bowl-wrap">
+        <div class="bowl-glow"></div>
+        <img src="goldfish-bowl.png" alt="Goldfish mascot" class="relative w-full h-full object-contain">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ HOW IT WORKS ═══ -->
+<section id="how" class="relative py-24 border-t border-white/5">
+  <div class="max-w-6xl mx-auto px-8">
+    <div class="text-center mb-16">
+      <span class="pill mb-6">How it works</span>
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight gradient-text mt-4 mb-4">Three layers. You stop explaining.</h2>
+      <p class="text-lg text-zinc-400">It watches. It remembers. Your AI just knows.</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5">
+      <div class="bg-[#0d0d0d] border border-white/10 rounded-2xl p-8">
+        <div class="mono text-xs text-zinc-600 mb-5">01 / WATCHES</div>
+        <div class="w-12 h-12 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center mb-5">
+          <svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3 class="text-2xl font-bold mb-3">Your screen</h3>
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          It quietly reads every app, doc, tab, and chat you work in. Every few seconds, a fresh memory is saved.
+        </p>
+        <div class="mono text-xs text-zinc-500 bg-black/40 rounded-md p-3 border border-white/5">
+          <span class="text-amber-400/80">✓ saw</span> Notion · Launch brief<br/>
+          <span class="text-amber-400/80">✓ saw</span> Figma · Homepage v3<br/>
+          <span class="text-amber-400/80">✓ saw</span> Slack · #marketing
+        </div>
+      </div>
+
+      <div class="bg-[#0d0d0d] border border-white/10 rounded-2xl p-8">
+        <div class="mono text-xs text-zinc-600 mb-5">02 / REMEMBERS</div>
+        <div class="w-12 h-12 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center mb-5">
+          <svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <h3 class="text-2xl font-bold mb-3">Your machine</h3>
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          Everything stays on your Mac. No cloud. No accounts. Pause it, wipe it, or open the settings to see every memory.
+        </p>
+        <div class="mono text-xs text-zinc-500 bg-black/40 rounded-md p-3 border border-white/5">
+          <span class="text-emerald-400/80">✓</span> Stays on your Mac<br/>
+          <span class="text-emerald-400/80">✓</span> Encrypted locally<br/>
+          <span class="text-emerald-400/80">✓</span> Pause or wipe anytime
+        </div>
+      </div>
+
+      <div class="bg-[#0d0d0d] border border-amber-500/30 rounded-2xl p-8 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent pointer-events-none"></div>
+        <div class="relative">
+          <div class="mono text-xs text-zinc-500 mb-5">03 / SERVES</div>
+          <div class="w-12 h-12 bg-amber-500/20 border border-amber-500/50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </div>
+          <h3 class="text-2xl font-bold mb-3">Your AI</h3>
+          <p class="text-zinc-400 leading-relaxed mb-4">
+            ChatGPT, Claude, Cursor — they all just know what you were doing. No setup per conversation.
+          </p>
+          <div class="mono text-xs text-zinc-500 bg-black/40 rounded-md p-3 border border-white/5 leading-relaxed">
+            <span class="text-amber-400">you</span> "pick up where I left off"<br/>
+            <span class="text-amber-400">ai</span> "Sure — your Figma mocks<br/>  and the Notion draft, right?"
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SCREENSHOT ═══ -->
+<section class="relative py-24 border-t border-white/5">
+  <div class="max-w-6xl mx-auto px-8 text-center">
+    <span class="pill mb-6">Inside Goldfish</span>
+    <h2 class="text-4xl md:text-5xl font-bold tracking-tight gradient-text mt-4 mb-4">Search everything you've ever seen.</h2>
+    <p class="text-lg text-zinc-400 mb-12 max-w-2xl mx-auto">
+      Every app window, every doc, every chat. Tagged, searchable, and totally yours.
+    </p>
+    <div class="relative inline-block">
+      <div class="absolute inset-0 bg-amber-500/20 blur-3xl rounded-full"></div>
+      <img src="app-screenshot.png" class="relative w-full max-w-4xl mx-auto rounded-xl border border-white/10 shadow-2xl" alt="Goldfish dashboard">
+    </div>
+  </div>
+</section>
+
+<!-- ═══ INSTALL ═══ -->
+<section id="install" class="relative py-24 border-t border-white/5">
+  <div class="max-w-3xl mx-auto px-8">
+    <div class="text-center mb-12">
+      <span class="pill mb-6">Install</span>
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight gradient-text mt-4 mb-4">90 seconds. No account.</h2>
+    </div>
+
+    <div class="space-y-6">
+      <!-- Option A -->
+      <div class="bg-[#0d0d0d] border border-amber-500/30 rounded-2xl p-8 relative overflow-hidden">
+        <div class="absolute top-6 right-6 pill text-amber-400 border-amber-500/30">Easiest</div>
+        <div class="mono text-xs text-zinc-500 uppercase tracking-widest mb-3">Option A</div>
+        <h3 class="text-2xl font-bold mb-2">One-line install</h3>
+        <p class="text-zinc-400 text-sm mb-5">Downloads, installs, and unblocks the app automatically. Paste in Terminal.</p>
+        <div class="code-block">
+          <span><span class="text-zinc-500">$</span> curl -fsSL https://nadreau.github.io/goldfish/install.sh | bash</span>
+          <button class="copy-btn" onclick="copyCmd('curl -fsSL https://nadreau.github.io/goldfish/install.sh | bash', this)">Copy</button>
+        </div>
+      </div>
+
+      <!-- Option B -->
+      <div class="bg-[#0d0d0d] border border-white/10 rounded-2xl p-8">
+        <div class="mono text-xs text-zinc-500 uppercase tracking-widest mb-3">Option B</div>
+        <h3 class="text-2xl font-bold mb-2">Manual download</h3>
+        <p class="text-zinc-400 text-sm mb-5">Prefer clicking around? Grab the .dmg directly.</p>
+        <ol class="space-y-3 mb-5 text-sm text-zinc-300">
+          <li class="flex gap-3"><span class="text-amber-400 mono">1.</span> <span><a href="https://github.com/Nadreau/goldfish/releases/latest" class="text-amber-400 underline underline-offset-4 hover:text-amber-300">Download the .dmg</a> from GitHub releases</span></li>
+          <li class="flex gap-3"><span class="text-amber-400 mono">2.</span> Open it and drag Goldfish to Applications</li>
+          <li class="flex gap-3"><span class="text-amber-400 mono">3.</span> <span>One-time unblock in Terminal (app isn't Apple-signed yet):</span></li>
+        </ol>
+        <div class="code-block mb-4">
+          <span><span class="text-zinc-500">$</span> xattr -cr /Applications/Goldfish.app</span>
+          <button class="copy-btn" onclick="copyCmd('xattr -cr /Applications/Goldfish.app', this)">Copy</button>
+        </div>
+        <p class="text-xs text-zinc-500">Then open Goldfish normally. The onboarding connects your AI tools automatically.</p>
+      </div>
+    </div>
+
+    <!-- FAQ -->
+    <div class="mt-16">
+      <h3 class="text-xl font-semibold mb-6 text-center">Common questions</h3>
+      <div class="space-y-3">
+        <details class="bg-[#0d0d0d] border border-white/5 rounded-lg p-4 group">
+          <summary class="font-medium text-zinc-200 cursor-pointer flex items-center justify-between">
+            Is this spyware?
+            <span class="text-zinc-500 group-open:rotate-45 transition">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm mt-3 leading-relaxed">No. Everything stays on your Mac. Zero network calls unless you opt in to the optional Gemini enhancer (which requires you to paste your own API key). No accounts, no telemetry, no cloud. <a href="https://github.com/Nadreau/goldfish" class="text-amber-400 underline underline-offset-4">The code is public</a> — read it yourself.</p>
+        </details>
+        <details class="bg-[#0d0d0d] border border-white/5 rounded-lg p-4 group">
+          <summary class="font-medium text-zinc-200 cursor-pointer flex items-center justify-between">
+            Why does macOS say the app is "damaged"?
+            <span class="text-zinc-500 group-open:rotate-45 transition">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm mt-3 leading-relaxed">It isn't — macOS says that about any app that isn't Apple-signed. Apple charges $99/year for signing; we'll add it once there's real usage. The one-line install above handles the unblock for you.</p>
+        </details>
+        <details class="bg-[#0d0d0d] border border-white/5 rounded-lg p-4 group">
+          <summary class="font-medium text-zinc-200 cursor-pointer flex items-center justify-between">
+            Which AI tools does it work with?
+            <span class="text-zinc-500 group-open:rotate-45 transition">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm mt-3 leading-relaxed">Claude Desktop, Claude Code, Cursor, Windsurf, and any other tool that speaks MCP (the Model Context Protocol). Onboarding auto-detects the ones you already have installed.</p>
+        </details>
+        <details class="bg-[#0d0d0d] border border-white/5 rounded-lg p-4 group">
+          <summary class="font-medium text-zinc-200 cursor-pointer flex items-center justify-between">
+            Windows? Linux?
+            <span class="text-zinc-500 group-open:rotate-45 transition">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm mt-3 leading-relaxed">On the roadmap. <a href="https://github.com/Nadreau/goldfish" class="text-amber-400 underline underline-offset-4">Star the repo</a> to get notified.</p>
+        </details>
+        <details class="bg-[#0d0d0d] border border-white/5 rounded-lg p-4 group">
+          <summary class="font-medium text-zinc-200 cursor-pointer flex items-center justify-between">
+            Can I pause it or wipe the memory?
+            <span class="text-zinc-500 group-open:rotate-45 transition">+</span>
+          </summary>
+          <p class="text-zinc-400 text-sm mt-3 leading-relaxed">Yes. Pause from the menu bar any time. Wipe the whole memory from Settings → Data. It's your Mac.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="border-t border-white/5 py-12">
+  <div class="max-w-6xl mx-auto px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
+    <div class="flex items-center gap-3">
+      <img src="icon.png" class="w-6 h-6 rounded" alt="">
+      <span class="mono">Goldfish · for Mac · free</span>
+    </div>
+    <div class="flex items-center gap-6">
+      <a href="https://github.com/Nadreau/goldfish" class="hover:text-white transition">GitHub</a>
+      <a href="https://www.npmjs.com/package/goldfish-mcp" class="hover:text-white transition">npm</a>
+      <a href="https://twitter.com/NikoNadreau" class="hover:text-white transition">X</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+function copyCmd(cmd, btn) {
+  navigator.clipboard.writeText(cmd).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+</script>
+</body>
+</html>
